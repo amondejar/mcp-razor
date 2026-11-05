@@ -1,0 +1,96 @@
+/* McpRazor base styles. Hosts may override every variable through hostContext.styles.variables. */
+:root {
+  color-scheme: light dark;
+  --color-background-primary: light-dark(#ffffff, #1f1f1e);
+  --color-background-secondary: light-dark(#f6f5f2, #2a2a28);
+  --color-background-tertiary: light-dark(#eeece6, #333331);
+  --color-background-info: light-dark(#e8f0fb, #1d2a3b);
+  --color-background-danger: light-dark(#fbeceb, #3a2120);
+  --color-background-success: light-dark(#e9f5ec, #1c3123);
+  --color-background-warning: light-dark(#fdf3e1, #3a2f19);
+  --color-text-primary: light-dark(#1f1f1e, #f2f1ed);
+  --color-text-secondary: light-dark(#5e5d59, #b9b7b0);
+  --color-text-tertiary: light-dark(#8a8983, #8f8d86);
+  --color-text-info: light-dark(#1f5fbf, #8bb6f5);
+  --color-text-danger: light-dark(#b42318, #f19c94);
+  --color-text-success: light-dark(#1e7b3c, #86d19c);
+  --color-text-warning: light-dark(#9a5b00, #f0c06b);
+  --color-border-primary: light-dark(#d9d7d0, #45443f);
+  --color-border-secondary: light-dark(#e7e5df, #383734);
+  --color-ring-primary: light-dark(#1f5fbf, #8bb6f5);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-text-sm-size: 13px;
+  --font-text-md-size: 14px;
+  --font-heading-sm-size: 15px;
+  --font-heading-md-size: 17px;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --border-radius-sm: 6px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-full: 999px;
+  --border-width-regular: 1px;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-text-md-size);
+  line-height: 1.45;
+}
+
+#mcp-root { padding: 14px 16px; }
+#mcp-root[aria-busy="true"] { cursor: progress; }
+#mcp-root[aria-busy="true"] :is(button, input, select, textarea) { pointer-events: none; }
+
+h1, h2, h3, h4 { margin: 0 0 8px; line-height: 1.25; font-weight: var(--font-weight-semibold); }
+h1 { font-size: var(--font-heading-md-size); }
+h2, h3, h4 { font-size: var(--font-heading-sm-size); }
+p { margin: 0 0 8px; }
+
+button {
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  padding: 6px 12px;
+  border-radius: var(--border-radius-md);
+  border: var(--border-width-regular) solid var(--color-border-primary);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+button:hover { background: var(--color-background-secondary); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--color-text-primary); color: var(--color-background-primary); border-color: transparent; }
+button.primary:hover { opacity: .9; }
+button.danger { color: var(--color-text-danger); }
+
+input, select, textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: var(--border-radius-sm);
+  border: var(--border-width-regular) solid var(--color-border-primary);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+}
+:is(button, input, select, textarea):focus-visible { outline: 2px solid var(--color-ring-primary); outline-offset: 1px; }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: var(--font-weight-medium); color: var(--color-text-secondary); font-size: var(--font-text-sm-size); }
+th, td { padding: 8px 6px; border-bottom: var(--border-width-regular) solid var(--color-border-secondary); vertical-align: middle; }
+
+.mcp-razor-loading { color: var(--color-text-tertiary); font-size: var(--font-text-sm-size); }
+
+.mcp-status { margin: 10px 16px 0; padding: 8px 10px; border-radius: var(--border-radius-md); font-size: var(--font-text-sm-size); }
+.mcp-status-error { background: var(--color-background-danger); color: var(--color-text-danger); }
+.mcp-status-info { background: var(--color-background-info); color: var(--color-text-info); }
+
+.validation-message { color: var(--color-text-danger); font-size: var(--font-text-sm-size); }
+.invalid { border-color: var(--color-text-danger); }

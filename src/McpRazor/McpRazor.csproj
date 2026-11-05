@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>McpRazor</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>McpRazor</PackageId>
+    <Description>Build MCP Apps with Razor components: write the interactive UI that Claude, VS Code and other MCP hosts show in the chat as .razor files, with @onclick and @bind, rendered and run on your server.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- MCPEXP003: MCP Apps API of the official SDK is experimental. BL0006: RenderTree types are used on purpose by the renderer. -->
+    <NoWarn>$(NoWarn);MCPEXP003;BL0006</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol" Version="2.3.1" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Apps" Version="2.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Runtime\mcp-razor.js" LogicalName="McpRazor.Runtime.mcp-razor.js" />
+    <EmbeddedResource Include="Runtime\mcp-razor.css" LogicalName="McpRazor.Runtime.mcp-razor.css" />
+    <EmbeddedResource Include="Preview\preview.html" LogicalName="McpRazor.Preview.preview.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="McpRazor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

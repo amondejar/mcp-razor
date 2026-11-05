@@ -1,0 +1,12 @@
+<p>Count: @_count</p>
+<button type="button" @onclick="Increment">+1</button>
+<a href="#" @onclick="Reset" @onclick:preventDefault @onclick:stopPropagation>Reset</a>
+<Child Label="@($"child {_count}")" />
+
+@code {
+    private int _count;
+
+    private void Increment() => _count++;
+
+    private void Reset() => _count = 0;
+}

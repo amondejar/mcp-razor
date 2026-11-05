@@ -1,0 +1,64 @@
+@attribute [McpApp("ui://customers/new", Name = "New customer", Description = "Register a new customer.")]
+@inherits McpAppComponent<CustomerDraft>
+@inject LoanService LoanBook
+
+<div class="customer">
+    @if (_createdId is not null)
+    {
+        <h1>Customer created</h1>
+        <p><strong>@_model.Name</strong> is now registered as <strong>@_createdId</strong>.</p>
+    }
+    else
+    {
+        <h1>New customer</h1>
+        <EditForm Model="_model" OnValidSubmit="Save">
+            <DataAnnotationsValidator />
+
+            <div class="field">
+                <label for="name">Full name</label>
+                <InputText id="name" @bind-Value="_model.Name" />
+                <ValidationMessage For="() => _model.Name" />
+            </div>
+
+            <div class="field">
+                <label for="email">Email</label>
+                <InputText id="email" type="email" @bind-Value="_model.Email" />
+                <ValidationMessage For="() => _model.Email" />
+            </div>
+
+            <div class="field">
+                <label for="income">Monthly income (€)</label>
+                <InputNumber id="income" @bind-Value="_model.MonthlyIncome" />
+                <ValidationMessage For="() => _model.MonthlyIncome" />
+            </div>
+
+            <div class="field check">
+                <InputCheckbox id="privacy" @bind-Value="_model.AcceptsPrivacyPolicy" />
+                <label for="privacy">The customer accepts the privacy policy</label>
+            </div>
+            <ValidationMessage For="() => _model.AcceptsPrivacyPolicy" />
+
+            <button type="submit" class="primary">Create customer</button>
+        </EditForm>
+    }
+</div>
+
+<style>
+    .customer .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; max-width: 380px; }
+    .customer .field.check { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .customer label { font-size: var(--font-text-sm-size); color: var(--color-text-secondary); }
+    .customer button[type=submit] { margin-top: 12px; }
+</style>
+
+@code {
+    private CustomerDraft _model = new();
+    private string? _createdId;
+
+    protected override void OnInitialized() => _model = Data ?? new();
+
+    private void Save()
+    {
+        _createdId = LoanBook.AddCustomer(_model);
+        Host.UpdateModelContext($"The user registered customer {_createdId}: {_model.Name} <{_model.Email}>, monthly income {_model.MonthlyIncome} EUR.");
+    }
+}

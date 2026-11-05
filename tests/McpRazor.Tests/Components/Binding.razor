@@ -1,0 +1,19 @@
+<input id="name" @bind="_name" />
+<input id="live" @bind="_live" @bind:event="oninput" />
+<textarea id="notes" @bind="_notes"></textarea>
+<select id="color" @bind="_color">
+    <option value="red">Red</option>
+    <option value="blue">Blue</option>
+</select>
+<input id="agree" type="checkbox" @bind="_agree" />
+<input id="amount" type="number" @bind="_amount" />
+<p id="state">@_name|@_live|@_notes|@_color|@_agree|@_amount</p>
+
+@code {
+    private string? _name = "Ana";
+    private string? _live;
+    private string? _notes = "first <line>";
+    private string _color = "blue";
+    private bool _agree;
+    private int _amount = 5;
+}

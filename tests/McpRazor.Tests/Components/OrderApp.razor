@@ -1,0 +1,23 @@
+@attribute [McpApp("ui://test/order", Name = "Order", Description = "Test order app", PrefersBorder = true)]
+@inherits McpAppComponent<OrderData>
+
+<h1>Order @Data.Id</h1>
+<p id="status">@_status</p>
+<p id="locale">@Host.Context.Locale|@Host.Context.Theme|@Host.ToolInput?.GetProperty("id").GetString()</p>
+<button id="confirm" type="button" @onclick="Confirm">Confirm</button>
+<button id="fail" type="button" @onclick="Fail">Fail</button>
+
+@code {
+    private OrderStatus _status;
+
+    protected override void OnInitialized() => _status = Data.Status;
+
+    private void Confirm()
+    {
+        _status = OrderStatus.Confirmed;
+        Host.UpdateModelContext($"Order {Data.Id} confirmed.", new System.Text.Json.Nodes.JsonObject { ["id"] = Data.Id });
+        Host.SendMessage("What next?");
+    }
+
+    private void Fail() => throw new InvalidOperationException("Secret failure details");
+}

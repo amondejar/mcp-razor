@@ -1,0 +1,30 @@
+@if (_items is null)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <ul>
+        @foreach (var item in _items)
+        {
+            <li>@item</li>
+        }
+    </ul>
+    <button type="button" @onclick="AddAsync">Add</button>
+}
+
+@code {
+    private List<string>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(20);
+        _items = ["one", "two"];
+    }
+
+    private async Task AddAsync()
+    {
+        await Task.Delay(20);
+        _items!.Add("three");
+    }
+}

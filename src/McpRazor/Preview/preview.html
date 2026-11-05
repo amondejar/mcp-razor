@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>McpRazor preview</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f4f3ef, #181817);
+    --panel: light-dark(#ffffff, #222220);
+    --line: light-dark(#e2e0d9, #3a3936);
+    --text: light-dark(#1f1f1e, #f0efea);
+    --muted: light-dark(#6b6a65, #a3a19a);
+    --accent: light-dark(#c15f3c, #e08a68);
+    --user: light-dark(#ece9e1, #2f2e2b);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .tag { font-size: 12px; color: var(--muted); }
+  header .spacer { flex: 1; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 16px; padding: 16px 20px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  section.panel + section.panel { margin-top: 12px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .tool { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+  .tool[aria-pressed="true"] { border-color: var(--accent); }
+  .tool small { display: block; color: var(--muted); font-size: 12px; }
+  .hidden-tools { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  textarea { width: 100%; min-height: 90px; font: 12px/1.4 var(--mono); padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); resize: vertical; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  #log { font: 12px/1.4 var(--mono); max-height: 320px; overflow: auto; }
+  #log div { padding: 6px 0; border-bottom: 1px dashed var(--line); word-break: break-word; white-space: pre-wrap; }
+  #log b { color: var(--accent); font-weight: 600; }
+  .chat { display: flex; flex-direction: column; gap: 12px; }
+  .bubble { max-width: 760px; }
+  .bubble.user { align-self: flex-end; background: var(--user); padding: 10px 14px; border-radius: 14px; }
+  .bubble.assistant .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .frame { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
+  .frame iframe { display: block; width: 100%; height: 120px; border: 0; background: transparent; }
+  .frame.fullscreen { position: fixed; inset: 16px; z-index: 10; max-width: none; }
+  .frame.fullscreen iframe { height: 100% !important; }
+  .context { font: 12px/1.4 var(--mono); color: var(--muted); white-space: pre-wrap; }
+  .empty { color: var(--muted); }
+  .error { color: #c0392b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>McpRazor preview</h1>
+  <span class="tag">Local MCP Apps host · for development only</span>
+  <span class="spacer"></span>
+  <button id="theme" type="button">Theme: light</button>
+</header>
+<main>
+  <div>
+    <section class="panel">
+      <h2>Tools the model sees</h2>
+      <div id="tools" class="empty">Connecting…</div>
+      <div id="hidden" class="hidden-tools"></div>
+    </section>
+    <section class="panel">
+      <h2>Arguments</h2>
+      <textarea id="args" spellcheck="false">{}</textarea>
+      <div class="row">
+        <button id="run" class="primary" type="button" disabled>Call tool</button>
+        <button id="close" type="button" disabled>Close view</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Model context from the app</h2>
+      <div id="context" class="context empty">Nothing yet.</div>
+    </section>
+    <section class="panel">
+      <h2>Host log</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+  <div id="chat" class="chat">
+    <p class="empty">Pick a tool with a UI and call it, as the model would.</p>
+  </div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const MCP_PATH = "{{MCP_PATH}}";
+  const APPS_PROTOCOL = "2026-01-26";
+  const $ = (id) => document.getElementById(id);
+
+  // ------------------------------------------------------------ MCP client (Streamable HTTP)
+  let session = null;
+  let protocolVersion = "2025-11-25";
+  let rpcId = 1;
+
+  async function rpc(method, params, notification = false) {
+    const body = notification ? { jsonrpc: "2.0", method, params } : { jsonrpc: "2.0", id: rpcId++, method, params };
+    const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": protocolVersion };
+    if (session) headers["mcp-session-id"] = session;
+    const response = await fetch(MCP_PATH, { method: "POST", headers, body: JSON.stringify(body) });
+    session = response.headers.get("mcp-session-id") || session;
+    if (notification) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status} for ${method}`);
+    let message;
+    if ((response.headers.get("content-type") || "").includes("text/event-stream")) {
+      const text = await response.text();
+      for (const block of text.split(/\r?\n\r?\n/)) {
+        const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+        if (!data) continue;
+        const parsed = JSON.parse(data);
+        if (parsed.id === body.id) { message = parsed; break; }
+      }
+    } else {
+      message = await response.json();
+    }
+    if (!message) throw new Error(`No response for ${method}`);
+    if (message.error) throw new Error(message.error.message);
+    return message.result;
+  }
+
+  // ------------------------------------------------------------ State
+  let tools = [];
+  let selected = null;
+  let theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  let view = null;
+
+  const visibility = (tool) => tool._meta?.ui?.visibility ?? ["model", "app"];
+  const uiOf = (tool) => tool._meta?.ui?.resourceUri;
+
+  function log(label, detail) {
+    const line = document.createElement("div");
+    line.innerHTML = `<b></b> `;
+    line.querySelector("b").textContent = label;
+    line.append(typeof detail === "string" ? detail : JSON.stringify(detail));
+    $("log").prepend(line);
+  }
+
+  function applyTheme() {
+    document.documentElement.dataset.theme = theme;
+    $("theme").textContent = `Theme: ${theme}`;
+  }
+
+  // ------------------------------------------------------------ Start
+  async function start() {
+    applyTheme();
+    try {
+      const init = await rpc("initialize", {
+        protocolVersion,
+        capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } },
+        clientInfo: { name: "mcp-razor-preview", version: "0.1.0" },
+      });
+      protocolVersion = init.protocolVersion || protocolVersion;
+      await rpc("notifications/initialized", {}, true);
+      log("connected", `${init.serverInfo?.name ?? "server"} · MCP ${protocolVersion}`);
+      tools = (await rpc("tools/list", {})).tools || [];
+      renderTools();
+    } catch (error) {
+      $("tools").innerHTML = `<span class="error"></span>`;
+      $("tools").firstChild.textContent = `Could not connect to ${MCP_PATH}: ${error.message}`;
+    }
+  }
+
+  function renderTools() {
+    const list = $("tools");
+    list.className = "";
+    list.textContent = "";
+    const forModel = tools.filter((tool) => visibility(tool).includes("model"));
+    for (const tool of forModel) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tool";
+      button.dataset.name = tool.name;
+      button.innerHTML = "<span></span><small></small>";
+      button.firstChild.textContent = tool.name + (uiOf(tool) ? "  ▣" : "");
+      button.lastChild.textContent = uiOf(tool) ? `UI: ${uiOf(tool)}` : "No UI";
+      button.addEventListener("click", () => select(tool));
+      list.append(button);
+    }
+    const hidden = tools.filter((tool) => !visibility(tool).includes("model")).map((tool) => tool.name);
+    $("hidden").textContent = hidden.length ? `Hidden from the model (app only): ${hidden.join(", ")}` : "";
+    const first = forModel.find(uiOf);
+    if (first) select(first);
+  }
+
+  function select(tool) {
+    selected = tool;
+    for (const button of document.querySelectorAll(".tool")) button.setAttribute("aria-pressed", String(button.dataset.name === tool.name));
+    const example = {};
+    for (const [name, schema] of Object.entries(tool.inputSchema?.properties || {})) {
+      if (schema.default !== undefined) example[name] = schema.default;
+    }
+    $("args").value = JSON.stringify(example, null, 2);
+    $("run").disabled = false;
+  }
+
+  // ------------------------------------------------------------ Host side of MCP Apps
+  function cspFor(meta) {
+    const csp = meta?.ui?.csp || {};
+    const list = (items) => (items || []).join(" ");
+    return [
+      "default-src 'none'",
+      `script-src 'unsafe-inline' ${list(csp.resourceDomains)}`,
+      `style-src 'unsafe-inline' ${list(csp.resourceDomains)}`,
+      `img-src data: ${list(csp.resourceDomains)}`,
+      `font-src ${list(csp.resourceDomains) || "'none'"}`,
+      `media-src data: ${list(csp.resourceDomains)}`,
+      `connect-src ${list(csp.connectDomains) || "'none'"}`,
+      `frame-src ${list(csp.frameDomains) || "'none'"}`,
+      "object-src 'none'",
+    ].join("; ");
+  }
+
+  function hostContext() {
+    return {
+      theme,
+      displayMode: view?.fullscreen ? "fullscreen" : "inline",
+      availableDisplayModes: ["inline", "fullscreen"],
+      containerDimensions: { maxHeight: 6000 },
+      locale: navigator.language,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      platform: "web",
+      userAgent: "mcp-razor-preview",
+    };
+  }
+
+  async function run() {
+    if (!selected) return;
+    let args;
+    try {
+      args = JSON.parse($("args").value || "{}");
+    } catch (error) {
+      log("invalid arguments", error.message);
+      return;
+    }
+
+    await closeView();
+    $("chat").textContent = "";
+
+    const uri = uiOf(selected);
+    const assistant = document.createElement("div");
+    assistant.className = "bubble assistant";
+    assistant.innerHTML = `<div class="label"></div>`;
+    assistant.firstChild.textContent = `Assistant called ${selected.name}`;
+    $("chat").append(assistant);
+
+    const callPromise = rpc("tools/call", { name: selected.name, arguments: args });
+    log("model → tools/call", { name: selected.name, arguments: args });
+
+    if (!uri) {
+      const result = await callPromise;
+      assistant.append(document.createTextNode(result.content?.map((block) => block.text).join("\n") ?? ""));
+      return;
+    }
+
+    const resource = await rpc("resources/read", { uri });
+    const content = resource.contents?.[0];
+    if (!content || !content.mimeType?.startsWith("text/html")) {
+      log("error", `The UI resource ${uri} is not an HTML MCP App.`);
+      return;
+    }
+
+    const frame = document.createElement("div");
+    frame.className = "frame";
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.title = uri;
+    const csp = `<meta http-equiv="Content-Security-Policy" content="${cspFor(content._meta)}">`;
+    iframe.srcdoc = content.text.replace(/<head>/i, `<head>${csp}`);
+    frame.append(iframe);
+    assistant.append(frame);
+
+    view = { iframe, frame, tool: selected, args, initialized: false, result: null, sent: false, pending: new Map(), nextId: 1, fullscreen: false };
+    $("close").disabled = false;
+
+    callPromise.then((result) => {
+      log("server → tool result", result.structuredContent ?? result.content);
+      if (view && view.iframe === iframe) {
+        view.result = result;
+        deliver();
+      }
+    }, (error) => log("error", error.message));
+  }
+
+  function toView(message) {
+    view?.iframe.contentWindow?.postMessage(message, "*");
+  }
+
+  function deliver() {
+    if (!view || !view.initialized || !view.result || view.sent) return;
+    view.sent = true;
+    toView({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: view.args } });
+    toView({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: view.result });
+  }
+
+  window.addEventListener("message", async (event) => {
+    if (!view || event.source !== view.iframe.contentWindow) return;
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+
+    if (message.method === undefined) {
+      const call = view.pending.get(message.id);
+      if (call) { view.pending.delete(message.id); call(message); }
+      return;
+    }
+
+    const reply = (result) => toView({ jsonrpc: "2.0", id: message.id, result: result ?? {} });
+    const fail = (text) => toView({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: text } });
+    const params = message.params || {};
+
+    switch (message.method) {
+      case "ui/initialize":
+        reply({
+          protocolVersion: APPS_PROTOCOL,
+          hostInfo: { name: "mcp-razor-preview", version: "0.1.0" },
+          hostCapabilities: { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
+          hostContext: hostContext(),
+        });
+        break;
+      case "ui/notifications/initialized":
+        view.initialized = true;
+        log("app", "initialized");
+        deliver();
+        break;
+      case "ui/notifications/size-changed":
+        if (params.height) view.iframe.style.height = `${params.height}px`;
+        break;
+      case "tools/call": {
+        const tool = tools.find((item) => item.name === params.name);
+        if (!tool || !visibility(tool).includes("app")) {
+          log("blocked", `The app cannot call ${params.name}`);
+          fail(`Tool ${params.name} is not available to apps.`);
+          break;
+        }
+        try {
+          const started = performance.now();
+          const result = await rpc("tools/call", params);
+          log(`app → ${params.name}`, `${Math.round(performance.now() - started)} ms${result.isError ? " · error" : ""}`);
+          reply(result);
+        } catch (error) {
+          fail(error.message);
+        }
+        break;
+      }
+      case "resources/read":
+        try { reply(await rpc("resources/read", params)); } catch (error) { fail(error.message); }
+        break;
+      case "ui/message": {
+        const text = params.content?.text ?? JSON.stringify(params.content);
+        const bubble = document.createElement("div");
+        bubble.className = "bubble user";
+        bubble.textContent = text;
+        $("chat").append(bubble);
+        log("app → ui/message", text);
+        reply();
+        break;
+      }
+      case "ui/update-model-context": {
+        const text = (params.content || []).map((block) => block.text).join("\n");
+        $("context").className = "context";
+        $("context").textContent = text + (params.structuredContent ? `\n${JSON.stringify(params.structuredContent, null, 2)}` : "");
+        log("app → ui/update-model-context", text);
+        reply();
+        break;
+      }
+      case "ui/open-link":
+        log("app → ui/open-link", params.url);
+        window.open(params.url, "_blank", "noopener");
+        reply();
+        break;
+      case "ui/request-display-mode":
+        view.fullscreen = params.mode === "fullscreen";
+        view.frame.classList.toggle("fullscreen", view.fullscreen);
+        reply({ mode: view.fullscreen ? "fullscreen" : "inline" });
+        toView({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { displayMode: view.fullscreen ? "fullscreen" : "inline" } });
+        break;
+      case "notifications/message":
+        log("app log", params.data ?? params);
+        break;
+      case "ping":
+        reply();
+        break;
+      default:
+        if (message.id !== undefined) fail(`Unsupported method ${message.method}`);
+    }
+  });
+
+  async function closeView() {
+    if (!view) return;
+    const current = view;
+    const id = `teardown-${current.nextId++}`;
+    const answered = new Promise((resolve) => current.pending.set(id, resolve));
+    toView({ jsonrpc: "2.0", id, method: "ui/resource-teardown", params: { reason: "closed" } });
+    await Promise.race([answered, new Promise((resolve) => setTimeout(resolve, 1500))]);
+    current.frame.remove();
+    if (view === current) view = null;
+    $("close").disabled = true;
+    log("host", "view closed");
+  }
+
+  $("run").addEventListener("click", run);
+  $("close").addEventListener("click", closeView);
+  $("theme").addEventListener("click", () => {
+    theme = theme === "dark" ? "light" : "dark";
+    applyTheme();
+    toView({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme } });
+  });
+
+  start();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/LoanReview/LoanReview.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/McpRazor/McpRazor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/McpRazor.Tests/McpRazor.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>preview.1</VersionSuffix>
+
+    <Authors>Antonio Mondéjar</Authors>
+    <Copyright>© Antonio Mondéjar</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/amondejar/mcp-razor</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/amondejar/mcp-razor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>mcp;mcp-apps;model-context-protocol;blazor;razor;ai-agents;claude</PackageTags>
+  </PropertyGroup>
+</Project>

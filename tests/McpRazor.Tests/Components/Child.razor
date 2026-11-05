@@ -1,0 +1,8 @@
+<span class="child">@Label</span><button type="button" @onclick="() => _clicks++">Child clicks: @_clicks</button>
+
+@code {
+    private int _clicks;
+
+    [Parameter]
+    public string? Label { get; set; }
+}

@@ -1,0 +1,173 @@
+@attribute [McpApp("ui://loans/review", Name = "Loan review", Description = "Approve or reject pending loan applications.")]
+@inherits McpAppComponent<LoanQueue>
+@inject LoanService LoanBook
+
+<div class="loans">
+    <h1>Pending loan applications</h1>
+    <p class="muted">@Summary()</p>
+
+    @if (_loans.Count == 0)
+    {
+        <p class="muted">There are no pending applications.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Applicant</th>
+                    <th class="num">Amount</th>
+                    <th>Term</th>
+                    <th>Score</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loan in _loans)
+                {
+                    <tr class="@(loan.Id == _open ? "open" : null)">
+                        <td>
+                            <strong>@loan.Applicant</strong>
+                            <div class="muted">@loan.Id · @loan.Purpose</div>
+                        </td>
+                        <td class="num">@Money(loan.Amount)</td>
+                        <td>@loan.TermMonths months</td>
+                        <td><span class="badge @RiskClass(loan.RiskScore)">@loan.RiskScore</span></td>
+                        <td class="actions">
+                            @if (loan.Status == LoanStatus.Pending)
+                            {
+                                <button type="button" @onclick="() => Toggle(loan.Id)">@(loan.Id == _open ? "Close" : "Review")</button>
+                            }
+                            else
+                            {
+                                <span class="badge status-@loan.Status.ToString().ToLowerInvariant()">@loan.Status</span>
+                            }
+                        </td>
+                    </tr>
+                    @if (loan.Id == _open)
+                    {
+                        <tr class="detail">
+                            <td colspan="5">
+                                <label for="note">Note for the file</label>
+                                <textarea id="note" rows="2" placeholder="Optional" @bind="_note"></textarea>
+                                @if (_error is not null)
+                                {
+                                    <p class="error">@_error</p>
+                                }
+                                <div class="buttons">
+                                    <button type="button" class="primary" @onclick="() => Decide(loan, approve: true)">Approve @loan.Id</button>
+                                    <button type="button" class="danger" @onclick="() => Decide(loan, approve: false)">Reject</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (_decisions.Count > 0)
+    {
+        <div class="footer">
+            <span>@_decisions.Count @(_decisions.Count == 1 ? "decision" : "decisions") recorded.</span>
+            <button type="button" @onclick="AskForSummary">Ask the assistant for a summary</button>
+        </div>
+    }
+</div>
+
+<style>
+    .loans .muted { color: var(--color-text-secondary); font-size: var(--font-text-sm-size); }
+    .loans .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .loans .actions { text-align: right; white-space: nowrap; }
+    .loans tr.open td { border-bottom-color: transparent; }
+    .loans tr.detail td { background: var(--color-background-secondary); padding: 12px; }
+    .loans label { display: block; font-size: var(--font-text-sm-size); color: var(--color-text-secondary); margin-bottom: 4px; }
+    .loans textarea { width: 100%; resize: vertical; }
+    .loans .buttons { display: flex; gap: 8px; margin-top: 10px; }
+    .loans .error { color: var(--color-text-danger); margin: 8px 0 0; }
+    .loans .badge { display: inline-block; padding: 2px 8px; border-radius: var(--border-radius-full); font-size: 12px; font-weight: var(--font-weight-medium); }
+    .loans .risk-low, .loans .status-approved { background: var(--color-background-success); color: var(--color-text-success); }
+    .loans .risk-mid { background: var(--color-background-warning); color: var(--color-text-warning); }
+    .loans .risk-high, .loans .status-rejected { background: var(--color-background-danger); color: var(--color-text-danger); }
+    .loans .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--color-text-secondary); font-size: var(--font-text-sm-size); }
+</style>
+
+@code {
+    private List<LoanApplication> _loans = [];
+    private readonly List<LoanApplication> _decisions = [];
+    private string? _open;
+    private string? _note;
+    private string? _error;
+    private NumberFormatInfo _money = NumberFormatInfo.InvariantInfo;
+
+    protected override void OnInitialized()
+    {
+        _loans = Data?.Loans?.ToList() ?? [];
+        _money = MoneyFormat(Host.Context.Locale, Data?.Currency);
+    }
+
+    private void Toggle(string id)
+    {
+        _open = _open == id ? null : id;
+        _note = null;
+        _error = null;
+    }
+
+    private void Decide(LoanApplication loan, bool approve)
+    {
+        try
+        {
+            var decided = approve ? LoanBook.Approve(loan.Id, _note) : LoanBook.Reject(loan.Id, _note);
+            _loans[_loans.FindIndex(item => item.Id == loan.Id)] = decided;
+            _decisions.Add(decided);
+            _open = null;
+            _note = null;
+            _error = null;
+
+            // Tell the model what happened, so it can answer follow-up questions about it.
+            Host.UpdateModelContext(DecisionsText());
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private void AskForSummary() =>
+        Host.SendMessage("Summarize the loan decisions I just made in the review panel and tell me if any of them needs a follow-up.");
+
+    private string DecisionsText() =>
+        "Loan review panel. The user made these decisions: " +
+        string.Join("; ", _decisions.Select(loan =>
+            $"{loan.Id} ({loan.Applicant}, {Money(loan.Amount)}) {loan.Status.ToString().ToLowerInvariant()}" +
+            (loan.Note is null ? string.Empty : $", note: \"{loan.Note}\""))) + ".";
+
+    private string Summary()
+    {
+        var pending = _loans.Where(loan => loan.Status == LoanStatus.Pending).ToList();
+        return pending.Count == 0
+            ? "All applications in this list have been decided."
+            : $"{pending.Count} pending · {Money(pending.Sum(loan => loan.Amount))} in total";
+    }
+
+    private string Money(decimal amount) => amount.ToString("C0", _money);
+
+    private static string RiskClass(int score) => score >= 700 ? "risk-low" : score >= 640 ? "risk-mid" : "risk-high";
+
+    private static NumberFormatInfo MoneyFormat(string? locale, string? currency)
+    {
+        CultureInfo culture;
+        try
+        {
+            culture = string.IsNullOrWhiteSpace(locale) ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo(locale);
+        }
+        catch (CultureNotFoundException)
+        {
+            culture = CultureInfo.InvariantCulture;
+        }
+
+        var format = (NumberFormatInfo)culture.NumberFormat.Clone();
+        format.CurrencySymbol = currency == "EUR" || currency is null ? "€" : currency;
+        return format;
+    }
+}
