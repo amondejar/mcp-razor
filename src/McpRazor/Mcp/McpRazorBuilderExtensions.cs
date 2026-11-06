@@ -57,6 +57,8 @@ public static class McpRazorBuilderExtensions
         services.AddSingleton(McpRazorTools.CreateEventTool);
         services.AddSingleton(McpRazorTools.CreateReleaseTool);
 
+        builder.WithRequestFilters(filters => filters.AddCallToolFilter(McpRazorPrerenderFilter.Create));
+
         return builder.WithMcpApps();
     }
 

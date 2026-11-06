@@ -3,10 +3,11 @@
   "use strict";
 
   const PROTOCOL_VERSION = "2026-01-26";
-  const RUNTIME_VERSION = "0.1.0";
+  const RUNTIME_VERSION = "0.1.2";
   const TOOL_RENDER = "mcp_razor_render";
   const TOOL_EVENT = "mcp_razor_event";
   const TOOL_RELEASE = "mcp_razor_release";
+  const PRERENDER_KEY = "mcpRazor/view";
 
   const root = document.getElementById("mcp-root");
   const status = document.getElementById("mcp-status");
@@ -24,10 +25,20 @@
 
   const post = (message) => window.parent.postMessage(message, "*");
 
+  // A host that never answers must not leave the app hanging silently.
+  const TIMEOUTS = { "ui/initialize": 15000, "tools/call": 60000 };
+  const DEFAULT_TIMEOUT = 30000;
+
   const request = (method, params) =>
     new Promise((resolve, reject) => {
       const id = nextId++;
-      pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (pending.delete(id)) reject(new Error(`The host did not answer ${method}.`));
+      }, TIMEOUTS[method] ?? DEFAULT_TIMEOUT);
+      pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolve(value); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
       post({ jsonrpc: "2.0", id, method, params: params ?? {} });
     });
 
@@ -105,6 +116,16 @@
     }
 
     const previous = viewId;
+
+    // The server may have rendered the first view already, inside the tool result: no round trip, and it
+    // works in hosts that do not forward the app's tool calls.
+    const prerendered = result._meta?.[PRERENDER_KEY];
+    if (prerendered && prerendered.uri === appUri && typeof prerendered.html === "string") {
+      await apply({ mcpRazor: 1, viewId: prerendered.viewId, html: prerendered.html, effects: prerendered.effects });
+      if (previous && previous !== viewId) callTool(TOOL_RELEASE, { viewId: previous }).catch(() => {});
+      return;
+    }
+
     try {
       const envelope = await callTool(TOOL_RENDER, {
         uri: appUri,
@@ -142,6 +163,7 @@
     viewId = envelope.viewId;
     clearStatus();
     morph(root, envelope.html || "");
+    reportSize();
     await runEffects(envelope.effects);
   }
 
@@ -401,22 +423,48 @@
     html.style.maxWidth = dimensions.maxWidth ? `${dimensions.maxWidth}px` : "";
   }
 
+  // Hosts ignore size notifications sent before the handshake, and keep the iframe at height 0 until
+  // they get one. So sizes are reported only once connected (or once the handshake failed, so the
+  // error can be seen), measuring the document the same way as the official SDK.
+  let sizeReporting = false;
+  let sizeScheduled = false;
   let lastSize = "";
+
+  // A timer instead of requestAnimationFrame: browsers pause animation frames in sandboxed iframes
+  // that are hidden or have no height yet, which is exactly when the size must be reported.
   const reportSize = () => {
-    const rect = document.body.getBoundingClientRect();
-    const size = { width: Math.ceil(rect.width), height: Math.ceil(rect.height) };
-    const key = `${size.width}x${size.height}`;
-    if (key !== lastSize) {
-      lastSize = key;
-      notify("ui/notifications/size-changed", size);
-    }
+    if (!sizeReporting || sizeScheduled) return;
+    sizeScheduled = true;
+    setTimeout(() => {
+      sizeScheduled = false;
+      const html = document.documentElement;
+      const originalHeight = html.style.height;
+      html.style.height = "max-content";
+      const height = Math.ceil(html.getBoundingClientRect().height);
+      html.style.height = originalHeight;
+      const width = Math.ceil(window.innerWidth);
+      const key = `${width}x${height}`;
+      if (key !== lastSize) {
+        lastSize = key;
+        notify("ui/notifications/size-changed", { width, height });
+      }
+    }, 16);
   };
-  new ResizeObserver(() => requestAnimationFrame(reportSize)).observe(document.body);
+
+  function startSizeReporting() {
+    if (sizeReporting) return;
+    sizeReporting = true;
+    const observer = new ResizeObserver(reportSize);
+    observer.observe(document.documentElement);
+    observer.observe(document.body);
+    reportSize();
+  }
 
   function showStatus(kind, text) {
     status.hidden = false;
     status.className = `mcp-status mcp-status-${kind}`;
     status.textContent = text;
+    reportSize();
   }
 
   function clearStatus() {
@@ -441,16 +489,22 @@
 
   (async () => {
     try {
+      const appInfo = { name: "McpRazor", version: RUNTIME_VERSION };
       const result = await request("ui/initialize", {
+        // "appInfo" is what host SDKs validate; "clientInfo" is the name in the text of the 2026-01-26
+        // specification, kept for hosts that followed it.
+        appInfo,
+        clientInfo: appInfo,
         appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
-        clientInfo: { name: "McpRazor", version: RUNTIME_VERSION },
         protocolVersion: PROTOCOL_VERSION,
       });
       hostContext = result?.hostContext || {};
       applyHostContext();
       notify("ui/notifications/initialized", {});
+      startSizeReporting();
     } catch (error) {
       showStatus("error", `Could not connect to the host: ${error.message}`);
+      startSizeReporting();
     }
   })();
 })();

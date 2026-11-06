@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.0-preview.2
+
+### Fixes
+
+- **Apps did not show in Claude.** The runtime introduced itself in `ui/initialize` with `clientInfo`, as the text of
+  the 2026-01-26 specification says, but host SDKs validate `appInfo`. Hosts rejected the handshake, never sent the
+  tool result, and the app was never rendered. The runtime now sends `appInfo` (and `clientInfo` for older hosts).
+- **Hidden iframes.** Sizes were reported before the handshake, which hosts ignore, and never again, so the iframe
+  kept a height of 0 and not even errors were visible. Sizes are now reported once connected (or once the handshake
+  fails), measured like the official SDK, after every render and with a timer instead of `requestAnimationFrame`,
+  which browsers pause in sandboxed iframes that have no height yet.
+- Requests to the host time out (15 s for the handshake, 60 s for tool calls) and show an error instead of waiting
+  forever.
+
+### Changes
+
+- **The first view is rendered inside the tool result.** When the model calls a tool that points to an app, McpRazor
+  renders the view and sends it in the result's `_meta` (`mcpRazor/view`). The app shows it right away, without a
+  round trip, and it also shows in hosts that do not forward the app's tool calls to the server, such as agent
+  sessions in Claude Desktop. If the prerender fails, the app falls back to `mcp_razor_render`.
+- The preview host has a `?blockAppTools=1` mode that behaves like a host that does not forward app tool calls.
+- The preview host validates `ui/initialize` like host SDKs, starts iframes at height 0 and ignores sizes reported
+  before the handshake, so it fails where real hosts fail.
+
 ## 0.1.0-preview.1
 
 First preview.

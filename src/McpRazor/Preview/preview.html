@@ -47,7 +47,7 @@
   .bubble.user { align-self: flex-end; background: var(--user); padding: 10px 14px; border-radius: 14px; }
   .bubble.assistant .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .frame { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
-  .frame iframe { display: block; width: 100%; height: 120px; border: 0; background: transparent; }
+  .frame iframe { display: block; width: 100%; height: 0; border: 0; background: transparent; }
   .frame.fullscreen { position: fixed; inset: 16px; z-index: 10; max-width: none; }
   .frame.fullscreen iframe { height: 100% !important; }
   .context { font: 12px/1.4 var(--mono); color: var(--muted); white-space: pre-wrap; }
@@ -95,6 +95,8 @@
   "use strict";
   const MCP_PATH = "{{MCP_PATH}}";
   const APPS_PROTOCOL = "2026-01-26";
+  // ?blockAppTools=1 behaves like a host that does not forward the app's tool calls to the server.
+  const BLOCK_APP_TOOLS = new URLSearchParams(location.search).has("blockAppTools");
   const $ = (id) => document.getElementById(id);
 
   // ------------------------------------------------------------ MCP client (Streamable HTTP)
@@ -318,10 +320,17 @@
 
     switch (message.method) {
       case "ui/initialize":
+        // Same validation as the host SDK (McpUiInitializeRequestSchema): appInfo is required.
+        if (!params.appInfo?.name || !params.appInfo?.version || !params.protocolVersion || typeof params.appCapabilities !== "object") {
+          log("rejected", "ui/initialize without appInfo, appCapabilities or protocolVersion");
+          view.failed = true; // let the app show its error
+          fail("Invalid ui/initialize params: appInfo, appCapabilities and protocolVersion are required.");
+          break;
+        }
         reply({
           protocolVersion: APPS_PROTOCOL,
           hostInfo: { name: "mcp-razor-preview", version: "0.1.0" },
-          hostCapabilities: { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
+          hostCapabilities: BLOCK_APP_TOOLS ? { openLinks: {}, logging: {} } : { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
           hostContext: hostContext(),
         });
         break;
@@ -331,9 +340,19 @@
         deliver();
         break;
       case "ui/notifications/size-changed":
+        // Like real hosts, ignore sizes reported before the handshake.
+        if (!view.initialized && !view.failed) {
+          log("ignored", "size-changed before ui/notifications/initialized");
+          break;
+        }
         if (params.height) view.iframe.style.height = `${params.height}px`;
         break;
       case "tools/call": {
+        if (BLOCK_APP_TOOLS) {
+          log("blocked", `App tool calls are disabled (?blockAppTools): ${params.name}`);
+          fail("This host does not forward tool calls from apps.");
+          break;
+        }
         const tool = tools.find((item) => item.name === params.name);
         if (!tool || !visibility(tool).includes("app")) {
           log("blocked", `The app cannot call ${params.name}`);
