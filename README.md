@@ -96,13 +96,31 @@ scripts are not used.
 
 ## Try it
 
-The [`samples/LoanReview`](samples/LoanReview) server has two apps: a loan review queue (approve or reject, with a
-note) and a customer form with `EditForm` validation.
+Two sample servers, each with two apps:
+
+| Sample | Apps | Shows |
+|---|---|---|
+| [`samples/LoanReview`](samples/LoanReview) | Loan review queue · New customer form | Decisions with a note, `EditForm` validation, model context, messages to the chat |
+| [`samples/SalesOps`](samples/SalesOps) | Sales dashboard · Price change review | SVG charts with no JavaScript, filters and drill-down, full screen; a human reviewing and applying what an agent proposes |
 
 ```bash
-cd samples/LoanReview
-dotnet run                 # http://localhost:5180/preview
+cd samples/LoanReview && dotnet run      # http://localhost:5180/preview
+cd samples/SalesOps && dotnet run        # http://localhost:5181/preview
 ```
+
+**Sales dashboard.** Revenue and orders by month for a shop, by region and year. The chart is SVG written in Razor:
+click a month to see its top products and regions, then *Explain this month* asks the assistant about it with the
+numbers attached.
+
+![The sales dashboard: KPIs, a bar chart by month with June selected, and the breakdown of June in the South region](https://raw.githubusercontent.com/amondejar/mcp-razor/main/docs/images/sales-dashboard.png)
+
+**Price change review.** The model proposes a change (`propose_price_changes`, for example "Black Friday: −18 % on
+electronics"), but it cannot apply it: there is no tool for that. The panel lists every product with the new price,
+margin and checks. Rows with warnings start unselected, prices can be adjusted, and nothing changes until the user
+confirms. The server enforces the rules whatever the UI sends: a change set is applied once, only to its own
+products, and never below cost.
+
+![The price change review: eight products with current and new prices, margins, two margin warnings left unselected](https://raw.githubusercontent.com/amondejar/mcp-razor/main/docs/images/price-review.png)
 
 The preview page is a small MCP Apps host for development. It connects to `/mcp`, lists the tools the model would see,
 calls one, and shows its app in a sandboxed iframe with the restrictive default CSP of the specification. It also shows
@@ -123,6 +141,10 @@ dotnet build samples/LoanReview
     "loan-review": {
       "command": "dotnet",
       "args": ["/path/to/mcp-razor/samples/LoanReview/bin/Debug/net10.0/LoanReview.dll", "--stdio"]
+    },
+    "sales-ops": {
+      "command": "dotnet",
+      "args": ["/path/to/mcp-razor/samples/SalesOps/bin/Debug/net10.0/SalesOps.dll", "--stdio"]
     }
   }
 }
@@ -199,6 +221,11 @@ The host decides what to do with each request and may ask the user first.
 view, which is rendered before the host shares it, McpRazor uses `McpRazorOptions.DefaultCulture`, or the server's
 culture if that is not set. The server logs the locale, theme and time zone each host sends.
 
+As in any Blazor app, numbers in attributes are turned into text with the current culture: in `es-ES`,
+`<line y1="@y">` with `y = 156.5` becomes `y1="156,5"`, which is not a valid SVG length. Format coordinates and other
+machine-readable numbers with `CultureInfo.InvariantCulture` (the SalesOps dashboard does it with a small `N()`
+helper).
+
 ## Options
 
 ```csharp
@@ -267,8 +294,8 @@ culture if that is not set. The server logs the locale, theme and time zone each
 
 ```bash
 dotnet test                                   # unit and MCP server tests
-dotnet build samples/LoanReview
-cd tests/e2e && npm ci && npm test            # browser tests: the sample in the preview host (needs Chrome)
+dotnet build
+cd tests/e2e && npm ci && npm test            # browser tests: both samples in the preview host (needs Chrome)
 ```
 
 The preview host validates the MCP Apps handshake and sizes iframes like real hosts, so the browser tests fail where

@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/LoanReview/LoanReview.csproj" />
+    <Project Path="samples/SalesOps/SalesOps.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/McpRazor/McpRazor.csproj" />
