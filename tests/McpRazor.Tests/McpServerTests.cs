@@ -15,13 +15,17 @@ namespace McpRazor.Tests;
 /// <summary>Runs a real MCP server with McpRazor and talks to it with the SDK client over in-memory streams.</summary>
 public sealed class McpServerTests : IAsyncLifetime
 {
-    private readonly Pipe _clientToServer = new();
-    private readonly Pipe _serverToClient = new();
     private IHost _host = null!;
     private McpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync() => (_host, _client) = await StartAsync(clientSupportsApps: true);
+
+    /// <summary>Starts a server with McpRazor and connects a client that may or may not declare MCP Apps support.</summary>
+    private static async Task<(IHost Host, McpClient Client)> StartAsync(bool clientSupportsApps, McpAppPrerender prerender = McpAppPrerender.WhenHostSupportsApps)
     {
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
 
@@ -31,13 +35,32 @@ public sealed class McpServerTests : IAsyncLifetime
         McpApps.SetAppUi(showOrder, new McpUiToolMeta { ResourceUri = "ui://test/order" });
 
         builder.Services.AddMcpServer()
-            .WithStreamServerTransport(_clientToServer.Reader.AsStream(), _serverToClient.Writer.AsStream())
+            .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
             .WithTools([showOrder])
-            .WithRazorApps(apps => apps.AddAppsFromAssembly(typeof(OrderApp).Assembly));
+            .WithRazorApps(apps =>
+            {
+                apps.AddAppsFromAssembly(typeof(OrderApp).Assembly);
+                apps.Prerender = prerender;
+            });
 
-        _host = builder.Build();
-        await _host.StartAsync();
-        _client = await McpClient.CreateAsync(new StreamClientTransport(_clientToServer.Writer.AsStream(), _serverToClient.Reader.AsStream()));
+        var host = builder.Build();
+        await host.StartAsync();
+
+        var options = new McpClientOptions();
+        if (clientSupportsApps)
+        {
+            options.Capabilities = new ClientCapabilities
+            {
+                Extensions = new Dictionary<string, object>
+                {
+                    // As it arrives from a real client: JSON, not a typed object.
+                    [McpApps.ExtensionId] = JsonSerializer.SerializeToElement(new { mimeTypes = new[] { McpApps.HtmlMimeType } }),
+                },
+            };
+        }
+
+        var client = await McpClient.CreateAsync(new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()), options);
+        return (host, client);
     }
 
     [Fact]
@@ -118,6 +141,43 @@ public sealed class McpServerTests : IAsyncLifetime
         var confirm = Html.Handler(view["html"]!.GetValue<string>(), "confirm", "click");
         var afterClick = await CallAppToolAsync("mcp_razor_event", new() { ["viewId"] = view["viewId"]!.GetValue<string>(), ["handler"] = confirm, ["type"] = "click" });
         Assert.Equal("Confirmed", Html.Text(afterClick.GetProperty("html").GetString()!, "status"));
+    }
+
+    [Fact]
+    public async Task Does_not_prerender_for_clients_without_mcp_apps_support()
+    {
+        var (host, client) = await StartAsync(clientSupportsApps: false);
+        try
+        {
+            var result = await client.CallToolAsync("show_order", new Dictionary<string, object?> { ["id"] = "E-1" });
+
+            Assert.False(result.Meta?.ContainsKey("mcpRazor/view") ?? false);
+            Assert.Equal("E-1", result.StructuredContent!.Value.GetProperty("id").GetString());
+        }
+        finally
+        {
+            await client.DisposeAsync();
+            await host.StopAsync();
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Prerenders_for_every_client_when_configured()
+    {
+        var (host, client) = await StartAsync(clientSupportsApps: false, McpAppPrerender.Always);
+        try
+        {
+            var result = await client.CallToolAsync("show_order", new Dictionary<string, object?> { ["id"] = "E-2" });
+
+            Assert.Contains("<h1>Order E-2</h1>", result.Meta!["mcpRazor/view"]!["html"]!.GetValue<string>());
+        }
+        finally
+        {
+            await client.DisposeAsync();
+            await host.StopAsync();
+            host.Dispose();
+        }
     }
 
     [Fact]

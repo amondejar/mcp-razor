@@ -18,8 +18,17 @@
 
 - **The first view is rendered inside the tool result.** When the model calls a tool that points to an app, McpRazor
   renders the view and sends it in the result's `_meta` (`mcpRazor/view`). The app shows it right away, without a
-  round trip, and it also shows in hosts that do not forward the app's tool calls to the server, such as agent
-  sessions in Claude Desktop. If the prerender fails, the app falls back to `mcp_razor_render`.
+  round trip, and it also shows in hosts that do not forward the app's tool calls to the server. If the prerender fails, the app falls back to `mcp_razor_render`.
+- **The host's locale, theme and time zone reach the first view.** The prerendered view is rendered before the server
+  knows them; once the host shares them, the runtime renders the view again and swaps it in (within 5 s, before the
+  user can interact). If the host does not forward the call, the prerendered view stays.
+- **`McpRazorOptions.Prerender`** (`WhenHostSupportsApps` by default, `Always`, `Never`). By default the first view is
+  only rendered for clients that declared MCP Apps support, so text-only clients use no server memory. Over
+  stateless HTTP, where the server does not know the client's capabilities, it prerenders.
+- **Browser tests in CI** (`tests/e2e`): the LoanReview sample in the preview host, covering the review queue, the
+  form, the host locale, a host that does not forward app tool calls, and three cold starts.
+- The preview host accepts `?locale=` and `?timeZone=`.
+- README: a screenshot from Claude Desktop and a host compatibility table.
 - The preview host has a `?blockAppTools=1` mode that behaves like a host that does not forward app tool calls.
 - The preview host validates `ui/initialize` like host SDKs, starts iframes at height 0 and ignores sizes reported
   before the handshake, so it fails where real hosts fail.

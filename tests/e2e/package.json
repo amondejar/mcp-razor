@@ -1,0 +1,12 @@
+{
+  "name": "mcp-razor-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests: the LoanReview sample in the McpRazor preview host.",
+  "scripts": {
+    "test": "node e2e.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "24.10.2"
+  }
+}

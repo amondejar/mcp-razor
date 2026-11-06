@@ -3,7 +3,7 @@
   "use strict";
 
   const PROTOCOL_VERSION = "2026-01-26";
-  const RUNTIME_VERSION = "0.1.2";
+  const RUNTIME_VERSION = "0.1.3";
   const TOOL_RENDER = "mcp_razor_render";
   const TOOL_EVENT = "mcp_razor_event";
   const TOOL_RELEASE = "mcp_razor_release";
@@ -28,13 +28,14 @@
   // A host that never answers must not leave the app hanging silently.
   const TIMEOUTS = { "ui/initialize": 15000, "tools/call": 60000 };
   const DEFAULT_TIMEOUT = 30000;
+  const CONTEXT_RENDER_TIMEOUT = 5000;
 
-  const request = (method, params) =>
+  const request = (method, params, timeout) =>
     new Promise((resolve, reject) => {
       const id = nextId++;
       const timer = setTimeout(() => {
         if (pending.delete(id)) reject(new Error(`The host did not answer ${method}.`));
-      }, TIMEOUTS[method] ?? DEFAULT_TIMEOUT);
+      }, timeout ?? TIMEOUTS[method] ?? DEFAULT_TIMEOUT);
       pending.set(id, {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
         reject: (error) => { clearTimeout(timer); reject(error); },
@@ -98,8 +99,8 @@
     return queue;
   }
 
-  async function callTool(name, args) {
-    const result = await request("tools/call", { name, arguments: args });
+  async function callTool(name, args, timeout) {
+    const result = await request("tools/call", { name, arguments: args }, timeout);
     if (!result || result.isError) throw new Error(textOf(result) || "The server returned an error.");
     const envelope = result.structuredContent ?? parseJson(textOf(result));
     if (!envelope || envelope.mcpRazor !== 1) throw new Error("Unexpected answer from the server.");
@@ -123,6 +124,7 @@
     if (prerendered && prerendered.uri === appUri && typeof prerendered.html === "string") {
       await apply({ mcpRazor: 1, viewId: prerendered.viewId, html: prerendered.html, effects: prerendered.effects });
       if (previous && previous !== viewId) callTool(TOOL_RELEASE, { viewId: previous }).catch(() => {});
+      await rerenderWithHostContext(result);
       return;
     }
 
@@ -137,6 +139,33 @@
       if (previous && previous !== viewId) callTool(TOOL_RELEASE, { viewId: previous }).catch(() => {});
     } catch (error) {
       showStatus("error", error.message);
+    }
+  }
+
+  // The prerendered view was rendered before the server knew the host's locale, theme or time zone.
+  // When the host shares them, render the view again with them and swap it in. This runs inside the
+  // event queue, so the user cannot have interacted with the prerendered view yet. If the host does not
+  // forward the call or is slow, the prerendered view stays.
+  async function rerenderWithHostContext(result) {
+    const context = contextForServer();
+    if (!context.locale && !context.theme && !context.timeZone) return;
+
+    const prerenderedId = viewId;
+    try {
+      const envelope = await callTool(TOOL_RENDER, {
+        uri: appUri,
+        data: result.structuredContent ?? null,
+        input: toolInput,
+        hostContext: context,
+      }, CONTEXT_RENDER_TIMEOUT);
+      if (viewId !== prerenderedId) {
+        callTool(TOOL_RELEASE, { viewId: envelope.viewId }).catch(() => {});
+        return;
+      }
+      await apply(envelope);
+      callTool(TOOL_RELEASE, { viewId: prerenderedId }).catch(() => {});
+    } catch (error) {
+      console.info("[mcp-razor] kept the prerendered view:", error.message);
     }
   }
 
