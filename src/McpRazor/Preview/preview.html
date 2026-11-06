@@ -98,8 +98,8 @@
   // ?blockAppTools=1 behaves like a host that does not forward the app's tool calls to the server.
   const QUERY = new URLSearchParams(location.search);
   const BLOCK_APP_TOOLS = QUERY.has("blockAppTools");
-  // ?locale=es-ES and ?timeZone=Europe/Madrid override what the host tells the app.
-  const LOCALE = QUERY.get("locale") || navigator.language;
+  // ?locale=es-ES and ?timeZone=Europe/Madrid override what the host tells the app; ?locale=none sends no locale.
+  const LOCALE = QUERY.get("locale") === "none" ? undefined : QUERY.get("locale") || navigator.language;
   const TIME_ZONE = QUERY.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const $ = (id) => document.getElementById(id);
 

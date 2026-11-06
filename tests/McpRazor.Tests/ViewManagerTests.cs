@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using McpRazor.Hosting;
 using McpRazor.Rendering;
@@ -48,6 +49,46 @@ public sealed class ViewManagerTests : IAsyncDisposable
         Assert.Equal("es-ES|dark|A-7", Html.Text(view.Html, "locale"));
         Assert.Empty(view.Effects);
         Assert.Equal(1, _views.Count);
+    }
+
+    [Fact]
+    public async Task Runs_components_with_the_culture_of_the_host_locale()
+    {
+        var view = await RenderOrderAsync();   // locale es-ES
+
+        Assert.Equal("es-ES|es-ES", Html.Text(view.Html, "culture"));
+        Assert.Equal(10m.ToString("C", CultureInfo.GetCultureInfo("es-ES")), Html.Text(view.Html, "total"));
+
+        // Events run with it too.
+        var result = await _views.DispatchAsync(view.ViewId, Html.Handler(view.Html, "confirm", "click"), "click", null, null, owner: null);
+        Assert.Equal("es-ES|es-ES", Html.Text(result.Html, "culture"));
+    }
+
+    [Fact]
+    public async Task Uses_the_default_culture_when_the_host_sends_no_locale()
+    {
+        _options.DefaultCulture = CultureInfo.GetCultureInfo("de-DE");
+        var data = JsonSerializer.SerializeToElement(new OrderData("A-8", OrderStatus.Draft, 10m), McpJsonUtilities.DefaultOptions);
+
+        var view = await _views.RenderAsync(OrderUri, data, JsonSerializer.SerializeToElement(new { id = "A-8" }), hostContext: null, owner: null);
+
+        Assert.Equal("de-DE|de-DE", Html.Text(view.Html, "culture"));
+
+        // The host shares its locale later: the next events follow it.
+        var result = await _views.DispatchAsync(view.ViewId, Html.Handler(view.Html, "confirm", "click"), "click", null,
+            JsonSerializer.SerializeToElement(new { locale = "fr-FR" }), owner: null);
+        Assert.Equal("fr-FR|fr-FR", Html.Text(result.Html, "culture"));
+    }
+
+    [Fact]
+    public async Task Ignores_unknown_locales()
+    {
+        _options.DefaultCulture = CultureInfo.GetCultureInfo("it-IT");
+        var data = JsonSerializer.SerializeToElement(new OrderData("A-9", OrderStatus.Draft, 10m), McpJsonUtilities.DefaultOptions);
+
+        var view = await _views.RenderAsync(OrderUri, data, null, JsonSerializer.SerializeToElement(new { locale = "not a locale!" }), owner: null);
+
+        Assert.Equal("it-IT|it-IT", Html.Text(view.Html, "culture"));
     }
 
     [Fact]

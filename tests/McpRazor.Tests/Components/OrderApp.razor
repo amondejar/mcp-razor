@@ -3,6 +3,8 @@
 
 <h1>Order @Data.Id</h1>
 <p id="status">@_status</p>
+<p id="total">@Data.Total.ToString("C")</p>
+<p id="culture">@System.Globalization.CultureInfo.CurrentCulture.Name|@Host.Culture.Name</p>
 <p id="locale">@Host.Context.Locale|@Host.Context.Theme|@Host.ToolInput?.GetProperty("id").GetString()</p>
 <button id="confirm" type="button" @onclick="Confirm">Confirm</button>
 <button id="fail" type="button" @onclick="Fail">Fail</button>

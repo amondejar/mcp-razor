@@ -185,6 +185,7 @@ The three internal tools are marked `visibility: ["app"]`, so hosts hide them fr
 | Member | MCP Apps message | Use |
 |---|---|---|
 | `Host.Context` | `hostContext` | Theme, locale, time zone, display mode and platform of the host |
+| `Host.Culture` | `hostContext.locale` | The culture the app runs with (see below) |
 | `Host.ToolInput` | `ui/notifications/tool-input` | The arguments of the tool call |
 | `Host.UpdateModelContext(text, json?)` | `ui/update-model-context` | Tell the model what the user did, for its next turns |
 | `Host.SendMessage(text)` | `ui/message` | Post a message to the chat as the user |
@@ -192,6 +193,11 @@ The three internal tools are marked `visibility: ["app"]`, so hosts hide them fr
 | `Host.RequestDisplayMode(mode)` | `ui/request-display-mode` | `inline`, `fullscreen` or `pip` |
 
 The host decides what to do with each request and may ask the user first.
+
+**Culture.** Components render and handle events with `CultureInfo.CurrentCulture` set to the host's locale, so
+`amount.ToString("C")` follows the user's language. When the host does not send a locale, for example in the first
+view, which is rendered before the host shares it, McpRazor uses `McpRazorOptions.DefaultCulture`, or the server's
+culture if that is not set. The server logs the locale, theme and time zone each host sends.
 
 ## Options
 
@@ -206,6 +212,7 @@ The host decides what to do with each request and may ask the user first.
         app.Csp = new() { ResourceDomains = ["https://cdn.example.com"] };
     });
     apps.Prerender = McpAppPrerender.WhenHostSupportsApps;   // first view inside the tool result (Always, Never)
+    apps.DefaultCulture = CultureInfo.GetCultureInfo("es-ES"); // when the host sends no locale (default: the server's)
     apps.ViewIdleTimeout = TimeSpan.FromMinutes(30);         // release views without events
     apps.MaxViews = 500;                                     // least recently used views go first
     apps.DetailedErrors = false;                             // keep exception messages on the server
@@ -253,8 +260,8 @@ The host decides what to do with each request and may ask the user first.
 - **Host support varies.** MCP Apps is new and hosts implement it at different speeds. A host may show the app but
   not forward its tool calls: the first view appears, and clicks show an error. Test in the hosts your users have;
   `/preview?blockAppTools=1` simulates such a host.
-- **The first view uses invariant formatting** until the host shares its locale. With hosts that do not forward the
-  app's tool calls, it keeps it.
+- **The first view uses `DefaultCulture`** (or the server's culture) until the host shares its locale. With hosts that
+  do not forward the app's tool calls, it keeps it.
 
 ## Tests
 
@@ -265,7 +272,7 @@ cd tests/e2e && npm ci && npm test            # browser tests: the sample in the
 ```
 
 The preview host validates the MCP Apps handshake and sizes iframes like real hosts, so the browser tests fail where
-Claude or VS Code would. Options: `?locale=es-ES`, `?timeZone=Europe/Madrid`, `?blockAppTools=1`.
+Claude or VS Code would. Options: `?locale=es-ES` (or `?locale=none`), `?timeZone=Europe/Madrid`, `?blockAppTools=1`.
 
 ## Roadmap
 

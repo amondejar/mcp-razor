@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.Extensions.Logging;
@@ -26,11 +27,15 @@ internal sealed class McpRazorRenderer : Renderer
 
     public int RootComponentId { get; private set; } = -1;
 
+    /// <summary>The culture components run with: <c>CultureInfo.CurrentCulture</c> and <c>CurrentUICulture</c>.</summary>
+    public CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture;
+
     /// <summary>Instantiates <paramref name="componentType"/> as the root and waits until it is fully rendered,
     /// including asynchronous lifecycle methods such as <c>OnInitializedAsync</c>.</summary>
     public Task RenderRootAsync(Type componentType, IDictionary<string, object?> parameters) =>
         Dispatcher.InvokeAsync(async () =>
         {
+            ApplyCulture();
             if (RootComponentId != -1)
             {
                 throw new InvalidOperationException("The root component has already been rendered.");
@@ -46,6 +51,7 @@ internal sealed class McpRazorRenderer : Renderer
     public Task DispatchAsync(ulong eventHandlerId, EventArgs eventArgs) =>
         Dispatcher.InvokeAsync(async () =>
         {
+            ApplyCulture();
             await DispatchEventAsync(eventHandlerId, fieldInfo: null, eventArgs);
             ThrowIfFailed();
         });
@@ -61,6 +67,13 @@ internal sealed class McpRazorRenderer : Renderer
     internal ArrayRange<RenderTreeFrame> GetFrames(int componentId) => GetCurrentRenderTreeFrames(componentId);
 
     protected override void HandleException(Exception exception) => _failure ??= exception;
+
+    // The culture flows with the async context, so it also applies to awaited work and re-renders.
+    private void ApplyCulture()
+    {
+        CultureInfo.CurrentCulture = Culture;
+        CultureInfo.CurrentUICulture = Culture;
+    }
 
     protected override Task UpdateDisplayAsync(in RenderBatch renderBatch) => Task.CompletedTask;
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
@@ -16,6 +17,12 @@ public sealed class McpRazorOptions
 
     /// <summary>Maximum number of live views. The least recently used one is released when it is reached. Default: 500.</summary>
     public int MaxViews { get; set; } = 500;
+
+    /// <summary>
+    /// The culture apps run with when the host does not send its locale, for example in the first view, which is
+    /// rendered before the host shares it. Default: <see langword="null"/>, the server's culture.
+    /// </summary>
+    public CultureInfo? DefaultCulture { get; set; }
 
     /// <summary>
     /// When the first view of an app is rendered inside the tool result. Default:

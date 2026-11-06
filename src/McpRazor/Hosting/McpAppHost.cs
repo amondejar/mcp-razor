@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -12,6 +13,8 @@ internal sealed class McpAppHost : IMcpAppHost
     public McpHostContext Context { get; internal set; } = McpHostContext.Empty;
 
     public JsonElement? ToolInput { get; internal set; }
+
+    public CultureInfo Culture { get; internal set; } = CultureInfo.CurrentCulture;
 
     public void UpdateModelContext(string text, JsonNode? structuredContent = null)
     {
