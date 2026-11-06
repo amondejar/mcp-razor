@@ -16,6 +16,11 @@
 
 ### Changes
 
+- **The first view is rendered inside the tool result.** When the model calls a tool that points to an app, McpRazor
+  renders the view and sends it in the result's `_meta` (`mcpRazor/view`). The app shows it right away, without a
+  round trip, and it also shows in hosts that do not forward the app's tool calls to the server, such as agent
+  sessions in Claude Desktop. If the prerender fails, the app falls back to `mcp_razor_render`.
+- The preview host has a `?blockAppTools=1` mode that behaves like a host that does not forward app tool calls.
 - The preview host validates `ui/initialize` like host SDKs, starts iframes at height 0 and ignores sizes reported
   before the handshake, so it fails where real hosts fail.
 

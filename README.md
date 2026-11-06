@@ -147,9 +147,11 @@ Model ──tools/call review_loans──▶ Host ──────────
 1. **A static shell.** Each app is a `ui://` resource with the same HTML on every read, so hosts can prefetch and
    cache it. It contains base styles that follow the host's theme variables and a small runtime (about 16 KB, no dependencies) that
    speaks the MCP Apps protocol.
-2. **Server-side rendering with live components.** When the tool result arrives, the runtime calls the app-only tool
-   `mcp_razor_render`. McpRazor creates a view: a component instance with its own DI scope, rendered by a Blazor
-   renderer that keeps the event handler IDs of the render tree. The HTML carries them as `data-mcp-on-click="7"`.
+2. **Server-side rendering with live components.** When the model calls a tool that points to an app, McpRazor
+   creates a view: a component instance with its own DI scope, rendered by a Blazor renderer that keeps the event
+   handler IDs of the render tree. The HTML carries them as `data-mcp-on-click="7"`. The first render travels in the
+   tool result's `_meta`, so the app shows it with no extra round trip; if it is missing, the runtime asks for it with
+   the app-only tool `mcp_razor_render`.
 3. **Events are tool calls.** A click, a change or a form submission becomes a call to `mcp_razor_event`. The handler
    runs on the server, the component renders again, and the runtime patches the DOM, keeping focus and what the user
    is typing.
@@ -229,12 +231,12 @@ The host decides what to do with each request and may ask the user first.
   session affinity. A stateless mode is on the roadmap.
 - **Each interaction is a round trip** through the host to your server. That suits forms, tables and approvals; it
   does not suit drag and drop or animations.
-- **Host support varies.** MCP Apps is new and hosts implement it at different speeds. Test in the hosts your users
-  have.
+- **Host support varies.** MCP Apps is new and hosts implement it at different speeds. Some hosts, such as agent
+  sessions in Claude Desktop, show the app but do not forward its tool calls: the first view appears, and events show
+  an error. Test in the hosts your users have; `/preview?blockAppTools=1` simulates such a host.
 
 ## Roadmap
 
-- Render the first view inside the tool result (`_meta`), saving one round trip.
 - A stateless mode with signed state, for servers without session affinity.
 - CSS isolation from `.razor.css` files.
 - A Roslyn analyzer: tool `ResourceUri` without an app, or data types that do not match.

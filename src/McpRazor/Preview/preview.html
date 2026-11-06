@@ -95,6 +95,8 @@
   "use strict";
   const MCP_PATH = "{{MCP_PATH}}";
   const APPS_PROTOCOL = "2026-01-26";
+  // ?blockAppTools=1 behaves like a host that does not forward the app's tool calls to the server.
+  const BLOCK_APP_TOOLS = new URLSearchParams(location.search).has("blockAppTools");
   const $ = (id) => document.getElementById(id);
 
   // ------------------------------------------------------------ MCP client (Streamable HTTP)
@@ -328,7 +330,7 @@
         reply({
           protocolVersion: APPS_PROTOCOL,
           hostInfo: { name: "mcp-razor-preview", version: "0.1.0" },
-          hostCapabilities: { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
+          hostCapabilities: BLOCK_APP_TOOLS ? { openLinks: {}, logging: {} } : { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
           hostContext: hostContext(),
         });
         break;
@@ -346,6 +348,11 @@
         if (params.height) view.iframe.style.height = `${params.height}px`;
         break;
       case "tools/call": {
+        if (BLOCK_APP_TOOLS) {
+          log("blocked", `App tool calls are disabled (?blockAppTools): ${params.name}`);
+          fail("This host does not forward tool calls from apps.");
+          break;
+        }
         const tool = tools.find((item) => item.name === params.name);
         if (!tool || !visibility(tool).includes("app")) {
           log("blocked", `The app cannot call ${params.name}`);

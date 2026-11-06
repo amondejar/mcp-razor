@@ -3,10 +3,11 @@
   "use strict";
 
   const PROTOCOL_VERSION = "2026-01-26";
-  const RUNTIME_VERSION = "0.1.1";
+  const RUNTIME_VERSION = "0.1.2";
   const TOOL_RENDER = "mcp_razor_render";
   const TOOL_EVENT = "mcp_razor_event";
   const TOOL_RELEASE = "mcp_razor_release";
+  const PRERENDER_KEY = "mcpRazor/view";
 
   const root = document.getElementById("mcp-root");
   const status = document.getElementById("mcp-status");
@@ -115,6 +116,16 @@
     }
 
     const previous = viewId;
+
+    // The server may have rendered the first view already, inside the tool result: no round trip, and it
+    // works in hosts that do not forward the app's tool calls.
+    const prerendered = result._meta?.[PRERENDER_KEY];
+    if (prerendered && prerendered.uri === appUri && typeof prerendered.html === "string") {
+      await apply({ mcpRazor: 1, viewId: prerendered.viewId, html: prerendered.html, effects: prerendered.effects });
+      if (previous && previous !== viewId) callTool(TOOL_RELEASE, { viewId: previous }).catch(() => {});
+      return;
+    }
+
     try {
       const envelope = await callTool(TOOL_RENDER, {
         uri: appUri,

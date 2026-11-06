@@ -105,6 +105,22 @@ public sealed class McpServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Prerenders_the_first_view_inside_the_tool_result()
+    {
+        var result = await _client.CallToolAsync("show_order", new Dictionary<string, object?> { ["id"] = "D-3" });
+
+        var view = result.Meta!["mcpRazor/view"]!;
+        Assert.Equal("ui://test/order", view["uri"]!.GetValue<string>());
+        Assert.Contains("<h1>Order D-3</h1>", view["html"]!.GetValue<string>());
+        Assert.Equal("D-3", result.StructuredContent!.Value.GetProperty("id").GetString());
+
+        // The prerendered view is live: the app can send its events.
+        var confirm = Html.Handler(view["html"]!.GetValue<string>(), "confirm", "click");
+        var afterClick = await CallAppToolAsync("mcp_razor_event", new() { ["viewId"] = view["viewId"]!.GetValue<string>(), ["handler"] = confirm, ["type"] = "click" });
+        Assert.Equal("Confirmed", Html.Text(afterClick.GetProperty("html").GetString()!, "status"));
+    }
+
+    [Fact]
     public async Task Returns_tool_errors_without_exception_details()
     {
         var render = await CallAppToolAsync("mcp_razor_render", new()
