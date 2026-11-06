@@ -4,6 +4,7 @@ using McpRazor.Rendering;
 using McpRazor.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -29,6 +30,7 @@ internal static class McpRazorPrerenderFilter
                 ResourceUriOf(tool) is not { } uri ||
                 request.Services?.GetService<McpRazorOptions>() is not { } options ||
                 options.Find(uri) is null ||
+                !ShouldPrerender(options.Prerender, request.Server.ClientCapabilities) ||
                 request.Services.GetService<McpAppViewManager>() is not { } views)
             {
                 return result;
@@ -57,6 +59,14 @@ internal static class McpRazorPrerenderFilter
 
             return result;
         };
+
+    private static bool ShouldPrerender(McpAppPrerender mode, ClientCapabilities? capabilities) => mode switch
+    {
+        McpAppPrerender.Always => true,
+        McpAppPrerender.Never => false,
+        // Unknown capabilities (stateless HTTP has no session to remember them): prerender, as the app may need it.
+        _ => capabilities is null || McpApps.GetUiCapability(capabilities) is not null,
+    };
 
     private static string? ResourceUriOf(McpServerTool tool) =>
         tool.ProtocolTool.Meta?["ui"]?["resourceUri"] is JsonValue value && value.TryGetValue<string>(out var uri) ? uri : null;

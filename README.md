@@ -4,7 +4,9 @@
 inside the chat as ordinary `.razor` files, with `@onclick`, `@bind` and `EditForm`. The components run on your
 server; the host only shows HTML and sends back what the user does.
 
-![A loan review app rendered by McpRazor inside the preview host](https://raw.githubusercontent.com/amondejar/mcp-razor/main/docs/images/loan-review.png)
+![The LoanReview sample inside Claude Desktop: a Razor component with approve and reject buttons, rendered and run on the server](https://raw.githubusercontent.com/amondejar/mcp-razor/main/docs/images/claude-desktop.png)
+
+*The LoanReview sample inside Claude Desktop. Two loans decided from the panel; every click ran a C# handler on the server.*
 
 > **Preview.** McpRazor builds on the MCP Apps extension of the official C# SDK, which is still experimental
 > (`MCPEXP003`), and on the MCP Apps specification `2026-01-26`. Expect breaking changes before 1.0.
@@ -126,6 +128,20 @@ dotnet build samples/LoanReview
 }
 ```
 
+## Host compatibility
+
+What has been checked so far, with the LoanReview sample:
+
+| Host | Shows the app | Interaction (clicks, forms) | Notes |
+|---|---|---|---|
+| Claude Desktop (Windows, stdio) | ✅ | ✅ | Approve and reject from the panel, checked by hand |
+| McpRazor preview (`/preview`) | ✅ | ✅ | Covered by the browser tests in CI |
+| Hosts that do not forward app tool calls | ✅ | ❌ shows an error | Simulated with `/preview?blockAppTools=1` |
+| VS Code, claude.ai and other hosts | ❓ | ❓ | Not tested yet: please report what you see |
+
+The first view travels inside the tool result, so it shows even when the host does not forward the app's own tool
+calls. Clicks need the host to forward them.
+
 ## How it works
 
 ```
@@ -151,7 +167,9 @@ Model ──tools/call review_loans──▶ Host ──────────
    creates a view: a component instance with its own DI scope, rendered by a Blazor renderer that keeps the event
    handler IDs of the render tree. The HTML carries them as `data-mcp-on-click="7"`. The first render travels in the
    tool result's `_meta`, so the app shows it with no extra round trip; if it is missing, the runtime asks for it with
-   the app-only tool `mcp_razor_render`.
+   the app-only tool `mcp_razor_render`. That first render happens before the server knows the host's locale, theme
+   and time zone, so once the host shares them the runtime renders the view again with them and swaps it in. If the
+   host does not forward that call, the first view stays.
 3. **Events are tool calls.** A click, a change or a form submission becomes a call to `mcp_razor_event`. The handler
    runs on the server, the component renders again, and the runtime patches the DOM, keeping focus and what the user
    is typing.
@@ -187,6 +205,7 @@ The host decides what to do with each request and may ask the user first.
         app.Stylesheet = ".kpi { font-size: 2rem }";
         app.Csp = new() { ResourceDomains = ["https://cdn.example.com"] };
     });
+    apps.Prerender = McpAppPrerender.WhenHostSupportsApps;   // first view inside the tool result (Always, Never)
     apps.ViewIdleTimeout = TimeSpan.FromMinutes(30);         // release views without events
     apps.MaxViews = 500;                                     // least recently used views go first
     apps.DetailedErrors = false;                             // keep exception messages on the server
@@ -231,9 +250,22 @@ The host decides what to do with each request and may ask the user first.
   session affinity. A stateless mode is on the roadmap.
 - **Each interaction is a round trip** through the host to your server. That suits forms, tables and approvals; it
   does not suit drag and drop or animations.
-- **Host support varies.** MCP Apps is new and hosts implement it at different speeds. Some hosts, such as agent
-  sessions in Claude Desktop, show the app but do not forward its tool calls: the first view appears, and events show
-  an error. Test in the hosts your users have; `/preview?blockAppTools=1` simulates such a host.
+- **Host support varies.** MCP Apps is new and hosts implement it at different speeds. A host may show the app but
+  not forward its tool calls: the first view appears, and clicks show an error. Test in the hosts your users have;
+  `/preview?blockAppTools=1` simulates such a host.
+- **The first view uses invariant formatting** until the host shares its locale. With hosts that do not forward the
+  app's tool calls, it keeps it.
+
+## Tests
+
+```bash
+dotnet test                                   # unit and MCP server tests
+dotnet build samples/LoanReview
+cd tests/e2e && npm ci && npm test            # browser tests: the sample in the preview host (needs Chrome)
+```
+
+The preview host validates the MCP Apps handshake and sizes iframes like real hosts, so the browser tests fail where
+Claude or VS Code would. Options: `?locale=es-ES`, `?timeZone=Europe/Madrid`, `?blockAppTools=1`.
 
 ## Roadmap
 

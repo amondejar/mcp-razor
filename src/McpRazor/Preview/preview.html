@@ -96,7 +96,11 @@
   const MCP_PATH = "{{MCP_PATH}}";
   const APPS_PROTOCOL = "2026-01-26";
   // ?blockAppTools=1 behaves like a host that does not forward the app's tool calls to the server.
-  const BLOCK_APP_TOOLS = new URLSearchParams(location.search).has("blockAppTools");
+  const QUERY = new URLSearchParams(location.search);
+  const BLOCK_APP_TOOLS = QUERY.has("blockAppTools");
+  // ?locale=es-ES and ?timeZone=Europe/Madrid override what the host tells the app.
+  const LOCALE = QUERY.get("locale") || navigator.language;
+  const TIME_ZONE = QUERY.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const $ = (id) => document.getElementById(id);
 
   // ------------------------------------------------------------ MCP client (Streamable HTTP)
@@ -227,8 +231,8 @@
       displayMode: view?.fullscreen ? "fullscreen" : "inline",
       availableDisplayModes: ["inline", "fullscreen"],
       containerDimensions: { maxHeight: 6000 },
-      locale: navigator.language,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      locale: LOCALE,
+      timeZone: TIME_ZONE,
       platform: "web",
       userAgent: "mcp-razor-preview",
     };

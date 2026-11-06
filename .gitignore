@@ -7,3 +7,5 @@ TestResults/
 .vscode/
 .idea/
 *.DotSettings.user
+node_modules/
+tests/e2e/screenshots/

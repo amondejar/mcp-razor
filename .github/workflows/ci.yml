@@ -27,6 +27,30 @@ jobs:
       - run: dotnet build -c Release --no-restore
       - run: dotnet test -c Release --no-build
 
+      # The sample in the preview host, which validates the MCP Apps handshake like real hosts.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Browser tests
+        working-directory: tests/e2e
+        env:
+          E2E_CONFIGURATION: Release
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: |
+          npm ci
+          npm test
+
+      - name: Browser test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tests/e2e/screenshots/
+          if-no-files-found: ignore
+
       - name: Pack
         run: |
           if [ -n "$PACKAGE_VERSION" ]; then

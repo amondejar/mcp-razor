@@ -18,6 +18,12 @@ public sealed class McpRazorOptions
     public int MaxViews { get; set; } = 500;
 
     /// <summary>
+    /// When the first view of an app is rendered inside the tool result. Default:
+    /// <see cref="McpAppPrerender.WhenHostSupportsApps"/>.
+    /// </summary>
+    public McpAppPrerender Prerender { get; set; } = McpAppPrerender.WhenHostSupportsApps;
+
+    /// <summary>
     /// Sends exception messages to the app when a component fails. Keep it off in production: the
     /// exception is always logged on the server. Default: <see langword="false"/>.
     /// </summary>
@@ -138,4 +144,21 @@ public sealed class McpAppRegistration
         var property = componentType.GetProperty("Data", BindingFlags.Public | BindingFlags.Instance);
         return property?.GetCustomAttribute<ParameterAttribute>() is not null ? property.PropertyType : null;
     }
+}
+
+/// <summary>When McpRazor renders the first view of an app inside the tool result.</summary>
+public enum McpAppPrerender
+{
+    /// <summary>
+    /// Only for clients that declared MCP Apps support (<c>io.modelcontextprotocol/ui</c>) when they connected.
+    /// Clients that only show text, such as command-line agents, get no view and use no server memory.
+    /// When the server does not know the client's capabilities (stateless HTTP), it prerenders.
+    /// </summary>
+    WhenHostSupportsApps,
+
+    /// <summary>For every call, also from clients that did not declare MCP Apps support.</summary>
+    Always,
+
+    /// <summary>Never. The app asks for its first view with the app-only tool <c>mcp_razor_render</c>.</summary>
+    Never,
 }
