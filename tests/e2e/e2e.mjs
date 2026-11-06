@@ -37,9 +37,9 @@ const check = (condition, message) => {
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-async function startServer() {
+async function startServer(env = {}) {
   const server = spawn("dotnet", [dll], {
-    env: { ...process.env, ASPNETCORE_ENVIRONMENT: "Development", ASPNETCORE_URLS: baseUrl },
+    env: { ...process.env, ASPNETCORE_ENVIRONMENT: "Development", ASPNETCORE_URLS: baseUrl, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -175,6 +175,16 @@ const scenarios = {
     check(log.includes("mcp_razor_render") && log.includes("mcp_razor_event"), "re-render, then event");
   },
 
+  async "host without locale: the server's culture (es-ES)"(browser) {
+    const { page } = await openPreview(browser, "?locale=none");
+    await callTool(page, "review_loans");
+    const frame = await appFrame(page, "ui://loans/review");
+    await frame.waitForSelector("table tbody tr");
+    await sleep(500);
+    const summary = await frame.$eval("p.muted", (e) => e.textContent);
+    check(summary.includes("88.500 €"), `summary with the server culture: ${summary}`);
+  },
+
   async "host that does not forward app tool calls: prerendered view, clear error on click"(browser) {
     const { page } = await openPreview(browser, "?blockAppTools=1&locale=es-ES");
     await callTool(page, "review_loans");
@@ -212,8 +222,13 @@ for (let run = 1; run <= 3; run++) {
 const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ["--no-sandbox", "--disable-gpu"] });
 let failed = 0;
 
+// Scenarios that need the server in a given culture (.NET reads it from LANG on Linux and macOS).
+const serverEnvironment = {
+  "host without locale: the server's culture (es-ES)": { LANG: "es_ES.UTF-8", LC_ALL: "es_ES.UTF-8" },
+};
+
 for (const [name, scenario] of Object.entries(scenarios)) {
-  const server = await startServer();
+  const server = await startServer(serverEnvironment[name]);
   const started = Date.now();
   try {
     await scenario(browser);

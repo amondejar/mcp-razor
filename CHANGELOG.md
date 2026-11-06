@@ -22,12 +22,17 @@
 - **The host's locale, theme and time zone reach the first view.** The prerendered view is rendered before the server
   knows them; once the host shares them, the runtime renders the view again and swaps it in (within 5 s, before the
   user can interact). If the host does not forward the call, the prerendered view stays.
+- **Components run with the host's culture.** `CultureInfo.CurrentCulture` and `CurrentUICulture` are set to the
+  host's locale while a view renders and handles events, so `ToString("C")` and friends follow the user's language
+  without extra code. `IMcpAppHost.Culture` exposes it. When the host sends no locale, the new
+  `McpRazorOptions.DefaultCulture` is used, or the server's culture (before, formatting was invariant).
+- The server logs, at Information level, the locale, theme and time zone each host sends and the culture used.
 - **`McpRazorOptions.Prerender`** (`WhenHostSupportsApps` by default, `Always`, `Never`). By default the first view is
   only rendered for clients that declared MCP Apps support, so text-only clients use no server memory. Over
   stateless HTTP, where the server does not know the client's capabilities, it prerenders.
 - **Browser tests in CI** (`tests/e2e`): the LoanReview sample in the preview host, covering the review queue, the
   form, the host locale, a host that does not forward app tool calls, and three cold starts.
-- The preview host accepts `?locale=` and `?timeZone=`.
+- The preview host accepts `?locale=` (`none` to send no locale) and `?timeZone=`.
 - README: a screenshot from Claude Desktop and a host compatibility table.
 - The preview host has a `?blockAppTools=1` mode that behaves like a host that does not forward app tool calls.
 - The preview host validates `ui/initialize` like host SDKs, starts iframes at height 0 and ignores sizes reported

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -14,6 +15,13 @@ public interface IMcpAppHost
 {
     /// <summary>What the host told the app about itself: theme, locale, time zone, display mode…</summary>
     McpHostContext Context { get; }
+
+    /// <summary>
+    /// The culture the app runs with: the host's locale, or <see cref="McpRazorOptions.DefaultCulture"/> when the host
+    /// sends none. It is also <c>CultureInfo.CurrentCulture</c> while the app renders and handles events, so
+    /// <c>ToString("C")</c> and friends follow it.
+    /// </summary>
+    CultureInfo Culture { get; }
 
     /// <summary>The arguments of the tool call that opened this app, if the host sent them.</summary>
     JsonElement? ToolInput { get; }
@@ -47,6 +55,27 @@ public sealed record McpHostContext(
     string? DisplayMode = null,
     string? Platform = null)
 {
+    /// <summary>The culture of <see cref="Locale"/>, or <see langword="null"/> if it is missing or unknown.</summary>
+    public CultureInfo? LocaleCulture
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Locale))
+            {
+                return null;
+            }
+
+            try
+            {
+                return CultureInfo.GetCultureInfo(Locale.Trim());
+            }
+            catch (CultureNotFoundException)
+            {
+                return null;
+            }
+        }
+    }
+
     /// <summary>An empty context, used when the host sends none.</summary>
     public static McpHostContext Empty { get; } = new();
 

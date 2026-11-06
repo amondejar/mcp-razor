@@ -103,7 +103,7 @@
     protected override void OnInitialized()
     {
         _loans = Data?.Loans?.ToList() ?? [];
-        _money = MoneyFormat(Host.Context.Locale, Data?.Currency);
+        _money = MoneyFormat(Host.Culture, Data?.Currency);
     }
 
     private void Toggle(string id)
@@ -154,20 +154,11 @@
 
     private static string RiskClass(int score) => score >= 700 ? "risk-low" : score >= 640 ? "risk-mid" : "risk-high";
 
-    private static NumberFormatInfo MoneyFormat(string? locale, string? currency)
+    // Host.Culture is the host's locale (or the server's culture before the host shares it).
+    private static NumberFormatInfo MoneyFormat(CultureInfo culture, string? currency)
     {
-        CultureInfo culture;
-        try
-        {
-            culture = string.IsNullOrWhiteSpace(locale) ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo(locale);
-        }
-        catch (CultureNotFoundException)
-        {
-            culture = CultureInfo.InvariantCulture;
-        }
-
         var format = (NumberFormatInfo)culture.NumberFormat.Clone();
-        format.CurrencySymbol = currency == "EUR" || currency is null ? "€" : currency;
+        format.CurrencySymbol = currency is null or "EUR" ? "€" : currency;
         return format;
     }
 }

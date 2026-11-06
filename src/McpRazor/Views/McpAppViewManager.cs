@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -52,6 +53,12 @@ internal sealed class McpAppViewManager : IAsyncDisposable
 
         var renderer = new McpRazorRenderer(scope.ServiceProvider, _loggerFactory);
         var view = new McpAppView(NewViewId(), uri, owner, scope, renderer, host, _time.GetUtcNow());
+        ApplyCulture(view);
+
+        _logger.LogInformation(
+            "Rendering MCP App {Uri} (view {ViewId}): host locale {Locale}, theme {Theme}, time zone {TimeZone}; culture {Culture}.",
+            uri, view.Id, host.Context.Locale ?? "(not sent)", host.Context.Theme ?? "(not sent)",
+            host.Context.TimeZone ?? "(not sent)", view.Renderer.Culture.Name.Length == 0 ? "invariant" : view.Renderer.Culture.Name);
 
         try
         {
@@ -91,6 +98,7 @@ internal sealed class McpAppViewManager : IAsyncDisposable
             if (hostContext is { ValueKind: JsonValueKind.Object })
             {
                 view.Host.Context = McpHostContext.From(hostContext);
+                ApplyCulture(view);
             }
 
             await view.Renderer.DispatchAsync(eventHandlerId, EventArgsFactory.Create(eventType, payload));
@@ -184,6 +192,13 @@ internal sealed class McpAppViewManager : IAsyncDisposable
         }
 
         return view;
+    }
+
+    private void ApplyCulture(McpAppView view)
+    {
+        var culture = view.Host.Context.LocaleCulture ?? _options.DefaultCulture ?? CultureInfo.CurrentCulture;
+        view.Host.Culture = culture;
+        view.Renderer.Culture = culture;
     }
 
     private static bool OwnedBy(McpAppView view, string? owner) => string.Equals(view.Owner, owner, StringComparison.Ordinal);
