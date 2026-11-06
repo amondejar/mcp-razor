@@ -1,0 +1,419 @@
+@attribute [McpApp("ui://sales/dashboard", Name = "Sales dashboard", Description = "Revenue and orders by month, with filters and a breakdown per month.")]
+@inherits McpAppComponent<SalesDashboardData>
+@inject SalesService Sales
+
+<div class="dash">
+    <header class="dash-head">
+        <h1>Sales</h1>
+        <button type="button" class="icon" aria-pressed="@_fullscreen" title="@(_fullscreen ? "Exit full screen" : "Full screen")" @onclick="ToggleFullscreen">
+            @(_fullscreen ? "⤡ Exit full screen" : "⤢ Full screen")
+        </button>
+    </header>
+
+    <div class="filters">
+        <label>
+            Year
+            <select id="year" @bind="_year" @bind:after="FiltersChanged">
+                @foreach (var year in SalesService.Years)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+        </label>
+        <label>
+            Region
+            <select id="region" @bind="_region" @bind:after="FiltersChanged">
+                <option value="All">All regions</option>
+                @foreach (var region in SalesService.Regions)
+                {
+                    <option value="@region">@region</option>
+                }
+            </select>
+        </label>
+        <div class="segmented" role="group" aria-label="Metric">
+            <button type="button" aria-pressed="@(_metric == Metric.Revenue)" @onclick="() => SetMetric(Metric.Revenue)">Revenue</button>
+            <button type="button" aria-pressed="@(_metric == Metric.Orders)" @onclick="() => SetMetric(Metric.Orders)">Orders</button>
+        </div>
+    </div>
+
+    <div class="kpis">
+        <div class="kpi">
+            <span class="kpi-label">Revenue</span>
+            <span class="kpi-value">@Money.Format(_kpis.Revenue, Host.Culture)</span>
+            @Delta(_kpis.RevenueChange)
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Orders</span>
+            <span class="kpi-value">@_kpis.Orders.ToString("N0", Host.Culture)</span>
+            @Delta(_kpis.OrdersChange)
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Average order</span>
+            <span class="kpi-value">@Money.Format(_kpis.AverageOrder, Host.Culture, 2)</span>
+            <span class="kpi-note">@(_year == 2026 ? "Jan–Oct" : "Full year")</span>
+        </div>
+    </div>
+
+    <figure class="chart">
+        <figcaption>@MetricName by month · @_year · @RegionName</figcaption>
+        <svg viewBox="0 0 @N(Width) @N(Height)" role="img" aria-label="@($"{MetricName} by month in {_year}, {RegionName}")">
+            @foreach (var tick in Ticks())
+            {
+                <line class="grid" x1="@N(Left)" x2="@N((Width - Right))" y1="@N(Y(tick))" y2="@N(Y(tick))" />
+                @SvgText(Left - 8, Y(tick) + 4, AxisLabel(tick), "axis", "end")
+            }
+
+            @foreach (var month in _months)
+            {
+                var m = month;
+                var x = BarX(m.Month);
+                var value = Value(m);
+                var selected = _month == m.Month;
+                <g class="@BarClass(m)" @onclick="() => SelectMonth(m)">
+                    <rect class="hit" x="@N((x - Gap))" y="@N(Top)" width="@N((BarWidth + Gap * 2))" height="@N((Height - Top - Bottom + 22))" />
+                    @if (m.HasData && value > 0)
+                    {
+                        <path class="bar" d="@BarPath(x, Y(value), BarWidth, Baseline - Y(value))" />
+                    }
+                    else
+                    {
+                        <line class="no-data" x1="@N(x)" x2="@N((x + BarWidth))" y1="@N((Baseline - 1))" y2="@N((Baseline - 1))" />
+                    }
+                    <title>@MonthName(m.Month) @_year: @(m.HasData ? ValueLabel(value) : "no data yet")</title>
+                    @SvgText(x + BarWidth / 2, Height - Bottom + 16, ShortMonth(m.Month), selected ? "month selected" : "month", "middle")
+                    @if (selected && m.HasData)
+                    {
+                        @SvgText(x + BarWidth / 2, Y(value) - 6, AxisLabel(value), "value", "middle")
+                    }
+                </g>
+            }
+
+            <line class="baseline" x1="@N(Left)" x2="@N((Width - Right))" y1="@N(Baseline)" y2="@N(Baseline)" />
+        </svg>
+        <p class="hint">@(_month is null ? "Click a month to see its breakdown." : "Click the month again to close the breakdown.")</p>
+    </figure>
+
+    @if (_month is { } selectedMonth && _detail is not null)
+    {
+        <section class="detail" aria-label="Breakdown of @MonthName(selectedMonth)">
+            <div class="detail-head">
+                <h2>@MonthName(selectedMonth) @_year · @RegionName</h2>
+                <div class="detail-actions">
+                    <button type="button" class="primary" @onclick="Explain">Explain this month</button>
+                    <button type="button" @onclick="() => SelectMonth(null)">Close</button>
+                </div>
+            </div>
+            <p class="detail-stats">
+                <strong>@Money.Format(_detail.Month.Revenue, Host.Culture)</strong> revenue ·
+                <strong>@_detail.Month.Orders.ToString("N0", Host.Culture)</strong> orders
+                @if (_detail.PreviousYear is { HasData: true } previous && previous.Revenue > 0)
+                {
+                    var change = Math.Round((_detail.Month.Revenue - previous.Revenue) / previous.Revenue * 100, 1);
+                    <span class="@(change >= 0 ? "up" : "down")"> · @Money.Percent(change, Host.Culture) vs @(_year - 1)</span>
+                }
+            </p>
+
+            <div class="detail-grid">
+                <div>
+                    <h3>Top products</h3>
+                    <table>
+                        <thead><tr><th>Product</th><th class="num">Units</th><th class="num">Revenue</th></tr></thead>
+                        <tbody>
+                            @foreach (var product in _detail.TopProducts)
+                            {
+                                <tr>
+                                    <td>@product.Name<div class="muted">@product.Sku · @product.Category</div></td>
+                                    <td class="num">@product.Units.ToString("N0", Host.Culture)</td>
+                                    <td class="num">@Money.Format(product.Revenue, Host.Culture)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3>By region</h3>
+                    <ul class="regions">
+                        @foreach (var region in _detail.Regions)
+                        {
+                            var share = _detail.RegionMax == 0 ? 0 : (double)(region.Revenue / _detail.RegionMax);
+                            <li class="@(_region == region.Region ? "current" : null)">
+                                <span class="region-name">@region.Region</span>
+                                <span class="track"><span class="fill" style="width: @((share * 100).ToString("F1", CultureInfo.InvariantCulture))%"></span></span>
+                                <span class="num">@Money.Compact(region.Revenue, Host.Culture)</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </section>
+    }
+
+    <details class="table-view">
+        <summary>Show data table</summary>
+        <table>
+            <thead><tr><th>Month</th><th class="num">Revenue</th><th class="num">Orders</th></tr></thead>
+            <tbody>
+                @foreach (var month in _months.Where(m => m.HasData))
+                {
+                    <tr>
+                        <td>@MonthName(month.Month)</td>
+                        <td class="num">@Money.Format(month.Revenue, Host.Culture)</td>
+                        <td class="num">@month.Orders.ToString("N0", Host.Culture)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </details>
+</div>
+
+<style>
+    .dash { --series-1: #2a78d6; }
+    :root[data-theme="dark"] .dash { --series-1: #3987e5; }
+    @@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dash { --series-1: #3987e5; } }
+
+    .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .dash-head h1 { margin: 0; }
+    .dash .icon { font-size: var(--font-text-sm-size); padding: 4px 10px; }
+
+    .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; margin-bottom: 14px; }
+    .filters label { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-text-sm-size); color: var(--color-text-secondary); }
+    .segmented { display: inline-flex; border: 1px solid var(--color-border-primary); border-radius: var(--border-radius-md); overflow: hidden; }
+    .segmented button { border: 0; border-radius: 0; padding: 6px 12px; }
+    .segmented button + button { border-left: 1px solid var(--color-border-primary); }
+    .segmented button[aria-pressed="true"] { background: var(--color-text-primary); color: var(--color-background-primary); }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--color-border-secondary); border-radius: var(--border-radius-lg); }
+    .kpi-label, .kpi-note { font-size: var(--font-text-sm-size); color: var(--color-text-secondary); }
+    .kpi-value { font-size: 22px; font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
+    .delta { font-size: var(--font-text-sm-size); font-variant-numeric: tabular-nums; }
+    .up { color: var(--color-text-success); }
+    .down { color: var(--color-text-danger); }
+
+    .chart { margin: 0 0 6px; }
+    .chart figcaption { font-size: var(--font-text-sm-size); color: var(--color-text-secondary); margin-bottom: 4px; }
+    .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .chart .grid { stroke: var(--color-border-secondary); stroke-width: 1; }
+    .chart .baseline { stroke: var(--color-border-primary); stroke-width: 1; }
+    .chart .axis, .chart .month { fill: var(--color-text-tertiary); font-size: 11px; }
+    .chart .month.selected { fill: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+    .chart .value { fill: var(--color-text-primary); font-size: 11px; font-weight: var(--font-weight-semibold); }
+    .chart .bar { fill: var(--series-1); }
+    .chart .no-data { stroke: var(--color-border-primary); stroke-width: 2; stroke-dasharray: 3 3; }
+    .chart .hit { fill: transparent; }
+    .chart .col { cursor: pointer; }
+    .chart .col:hover .bar { opacity: .85; }
+    .chart .col.dimmed .bar { opacity: .35; }
+    .chart .col.empty { cursor: default; }
+    .hint { font-size: var(--font-text-sm-size); color: var(--color-text-tertiary); margin: 2px 0 0; }
+
+    .detail { margin-top: 12px; padding: 12px; border-radius: var(--border-radius-lg); background: var(--color-background-secondary); }
+    .detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+    .detail-head h2 { margin: 0; }
+    .detail-actions { display: flex; gap: 8px; }
+    .detail-stats { margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+    @@media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
+    .detail h3 { font-size: var(--font-text-sm-size); color: var(--color-text-secondary); font-weight: var(--font-weight-medium); margin: 0 0 4px; }
+    .detail .num, .table-view .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .detail .muted { color: var(--color-text-tertiary); font-size: 12px; }
+    .regions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .regions li { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 8px; font-size: var(--font-text-sm-size); }
+    .regions li.current .region-name { font-weight: var(--font-weight-semibold); }
+    .track { height: 8px; border-radius: 4px; background: var(--color-background-tertiary); overflow: hidden; }
+    .fill { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--series-1); }
+
+    .table-view { margin-top: 12px; font-size: var(--font-text-sm-size); }
+    .table-view summary { cursor: pointer; color: var(--color-text-secondary); }
+</style>
+
+@code {
+    private enum Metric { Revenue, Orders }
+
+    private sealed record Detail(MonthTotal Month, MonthTotal? PreviousYear, IReadOnlyList<ProductSales> TopProducts, IReadOnlyList<RegionSales> Regions, decimal RegionMax);
+
+    // Chart geometry, in SVG units (the chart scales with the panel).
+    private const double Width = 640, Height = 230, Left = 56, Right = 8, Top = 14, Bottom = 26, Gap = 4;
+    private const double Baseline = Height - Bottom;
+    private static double BarWidth => (Width - Left - Right) / 12 - Gap * 2;
+
+    private int _year;
+    private string _region = "All";
+    private Metric _metric = Metric.Revenue;
+    private int? _month;
+    private bool _fullscreen;
+
+    private SalesKpis _kpis = new(0, 0, 0, null, null);
+    private IReadOnlyList<MonthTotal> _months = [];
+    private Detail? _detail;
+    private double _max = 1;
+
+    private string? RegionFilter => SalesService.NormalizeRegion(_region);
+    private string RegionName => RegionFilter is null ? "All regions" : $"{RegionFilter} region";
+    private string MetricName => _metric == Metric.Revenue ? "Revenue" : "Orders";
+
+    protected override void OnInitialized()
+    {
+        _year = SalesService.Years.Contains(Data?.Year ?? 0) ? Data!.Year : SalesService.Years[^1];
+        _region = SalesService.NormalizeRegion(Data?.Region) ?? "All";
+        Load();
+    }
+
+    private void FiltersChanged()
+    {
+        _month = null;
+        Load();
+        ShareWithModel();
+    }
+
+    private void SetMetric(Metric metric)
+    {
+        _metric = metric;
+        Scale();
+        ShareWithModel();
+    }
+
+    private void SelectMonth(MonthTotal? month)
+    {
+        if (month is { HasData: false })
+        {
+            return;
+        }
+
+        _month = month is null || _month == month.Month ? null : month.Month;
+        LoadDetail();
+        ShareWithModel();
+    }
+
+    private void ToggleFullscreen()
+    {
+        _fullscreen = !_fullscreen;
+        Host.RequestDisplayMode(_fullscreen ? "fullscreen" : "inline");
+    }
+
+    private void Explain()
+    {
+        if (_detail is null)
+        {
+            return;
+        }
+
+        var month = _detail.Month;
+        var comparison = _detail.PreviousYear is { HasData: true, Revenue: > 0 } previous
+            ? $", {Money.Percent(Math.Round((month.Revenue - previous.Revenue) / previous.Revenue * 100, 1), CultureInfo.InvariantCulture)} vs {MonthName(month.Month)} {_year - 1}"
+            : string.Empty;
+        var regions = string.Join(", ", _detail.Regions.Select(r => $"{r.Region} {r.Revenue:0} EUR"));
+        var top = string.Join(", ", _detail.TopProducts.Take(3).Select(p => $"{p.Name} ({p.Units} units)"));
+
+        Host.SendMessage(
+            $"Explain the sales of {MonthName(month.Month)} {_year} ({RegionName}): {month.Revenue:0} EUR revenue, {month.Orders} orders{comparison}. " +
+            $"By region: {regions}. Top products: {top}. What could explain this month, and is anything worth acting on?");
+    }
+
+    private void Load()
+    {
+        _kpis = Sales.Kpis(_year, RegionFilter);
+        _months = Sales.Monthly(_year, RegionFilter);
+        Scale();
+        LoadDetail();
+    }
+
+    private void Scale()
+    {
+        var max = _months.Where(m => m.HasData).Select(Value).DefaultIfEmpty(0).Max();
+        _max = max <= 0 ? 1 : NiceCeiling(max);
+    }
+
+    private void LoadDetail()
+    {
+        if (_month is not { } month || !SalesService.HasData(_year, month))
+        {
+            _detail = null;
+            return;
+        }
+
+        var current = _months[month - 1];
+        MonthTotal? previous = SalesService.Years.Contains(_year - 1) ? Sales.Monthly(_year - 1, RegionFilter)[month - 1] : null;
+        var regions = Sales.ByRegion(_year, month);
+        _detail = new Detail(current, previous, Sales.TopProducts(_year, month, RegionFilter, 5), regions, regions.Max(r => r.Revenue));
+    }
+
+    // Tell the model what the user is looking at, so follow-up questions refer to it.
+    private void ShareWithModel()
+    {
+        var text = $"Sales dashboard: {_year}, {RegionName}, showing {MetricName.ToLowerInvariant()}. " +
+                   $"Revenue {_kpis.Revenue:0} EUR, {_kpis.Orders} orders" +
+                   (_kpis.RevenueChange is { } change ? $" ({change:+0.0;-0.0} % revenue vs {_year - 1})." : ".");
+        if (_detail is not null)
+        {
+            text += $" The user opened {MonthName(_detail.Month.Month)} {_year}: {_detail.Month.Revenue:0} EUR, {_detail.Month.Orders} orders.";
+        }
+
+        Host.UpdateModelContext(text);
+    }
+
+    private double Value(MonthTotal month) => _metric == Metric.Revenue ? (double)month.Revenue : month.Orders;
+
+    private string ValueLabel(double value) =>
+        _metric == Metric.Revenue ? Money.Format((decimal)value, Host.Culture) : $"{value.ToString("N0", Host.Culture)} orders";
+
+    private string AxisLabel(double value) =>
+        _metric == Metric.Revenue ? Money.Compact((decimal)value, Host.Culture) : value.ToString("N0", Host.Culture);
+
+    private IEnumerable<double> Ticks() => Enumerable.Range(0, 5).Select(i => _max / 4 * i);
+
+    private double Y(double value) => Baseline - value / _max * (Baseline - Top);
+
+    private static double BarX(int month) => Left + (month - 1) * ((Width - Left - Right) / 12) + Gap;
+
+    private string BarClass(MonthTotal month) =>
+        !month.HasData ? "col empty" : _month is not null && _month != month.Month ? "col dimmed" : "col";
+
+    // A bar with 4 px rounded top corners, anchored to the baseline.
+    private static string BarPath(double x, double y, double width, double height)
+    {
+        var r = Math.Min(4, Math.Min(width / 2, height));
+        return string.Create(CultureInfo.InvariantCulture,
+            $"M{x:0.##},{y + height:0.##}V{y + r:0.##}Q{x:0.##},{y:0.##} {x + r:0.##},{y:0.##}H{x + width - r:0.##}Q{x + width:0.##},{y:0.##} {x + width:0.##},{y + r:0.##}V{y + height:0.##}Z");
+    }
+
+    // Blazor turns numeric attribute values into text with the current culture, which is the host's: in es-ES,
+    // 156.5 would become "156,5", an invalid SVG length. Coordinates are written with the invariant culture.
+    private static string N(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    // Razor treats <text> as its own tag, so SVG text is written as markup (encoded).
+    private static MarkupString SvgText(double x, double y, string text, string cssClass, string anchor) =>
+        new(string.Create(CultureInfo.InvariantCulture,
+            $"<text x=\"{x:0.##}\" y=\"{y:0.##}\" class=\"{cssClass}\" text-anchor=\"{anchor}\">{System.Net.WebUtility.HtmlEncode(text)}</text>"));
+
+    private RenderFragment Delta(decimal? change) => __builder =>
+    {
+        if (change is { } value)
+        {
+            <span class="delta @(value >= 0 ? "up" : "down")">@(value >= 0 ? "▲" : "▼") @Money.Percent(value, Host.Culture) vs @(_year - 1)</span>
+        }
+        else
+        {
+            <span class="kpi-note">No previous year</span>
+        }
+    };
+
+    // Month names follow the language of the UI (English); numbers follow the host's locale.
+    private static string MonthName(int month) => CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month);
+
+    private static string ShortMonth(int month) => CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(month);
+
+    private static double NiceCeiling(double value)
+    {
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(value)));
+        foreach (var step in new[] { 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10 })
+        {
+            if (step * magnitude >= value)
+            {
+                return step * magnitude;
+            }
+        }
+
+        return 10 * magnitude;
+    }
+}

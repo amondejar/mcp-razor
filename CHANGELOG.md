@@ -30,6 +30,9 @@
 - **`McpRazorOptions.Prerender`** (`WhenHostSupportsApps` by default, `Always`, `Never`). By default the first view is
   only rendered for clients that declared MCP Apps support, so text-only clients use no server memory. Over
   stateless HTTP, where the server does not know the client's capabilities, it prerenders.
+- **New sample, `SalesOps`**, with two apps: a sales dashboard (KPIs, an SVG bar chart written in Razor, filters,
+  month drill-down, *Explain this month*, full screen) and a price change review (the model proposes, the user
+  selects, adjusts and confirms; the server applies a change set once, only to its products, never below cost).
 - **Browser tests in CI** (`tests/e2e`): the LoanReview sample in the preview host, covering the review queue, the
   form, the host locale, a host that does not forward app tool calls, and three cold starts.
 - The preview host accepts `?locale=` (`none` to send no locale) and `?timeZone=`.

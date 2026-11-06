@@ -1,0 +1,332 @@
+@attribute [McpApp("ui://pricing/review", Name = "Price change review", Description = "Review, adjust and apply a proposed price change, row by row.")]
+@inherits McpAppComponent<PriceChangeSet>
+@inject PriceChangeService PriceChanges
+
+<div class="review">
+    <header class="review-head">
+        <div>
+            <h1>Price change @_set.Id</h1>
+            <p class="subtitle">@_set.Category · @Money.Percent(_set.Percent, Host.Culture) proposed · @_set.Items.Count products</p>
+        </div>
+        <span class="status status-@_set.Status.ToString().ToLowerInvariant()">@StatusLabel</span>
+    </header>
+
+    <blockquote class="reason">@_set.Reason</blockquote>
+
+    @if (_set.Status == ChangeSetStatus.Applied && _set.Result is { } result)
+    {
+        <div class="outcome outcome-applied" role="status">
+            <strong>Applied @result.Applied @(result.Applied == 1 ? "change" : "changes")</strong>, skipped @result.Skipped.
+            Estimated monthly revenue impact: <strong>@SignedMoney(result.MonthlyRevenueImpact)</strong>.
+        </div>
+    }
+    else if (_set.Status == ChangeSetStatus.Discarded)
+    {
+        <div class="outcome outcome-discarded" role="status">This change set was discarded. No prices changed.</div>
+    }
+    else
+    {
+        <div class="summary">
+            <span><strong>@SelectedCount</strong> of @_set.Items.Count selected</span>
+            <span>Monthly impact at current volumes <strong>@SignedMoney(Impact)</strong></span>
+            @if (WarningCount > 0)
+            {
+                <span class="warn-count">@WarningCount with warnings (not selected by default)</span>
+            }
+        </div>
+
+        <div class="toolbar">
+            <input id="filter" type="search" placeholder="Filter by name or SKU" @bind="_filter" @bind:event="oninput" />
+            <label class="check"><input id="only-warnings" type="checkbox" @bind="_onlyWarnings" /> Only rows with warnings</label>
+            <span class="spacer"></span>
+            <button type="button" @onclick="SelectRecommended">Select without warnings</button>
+            <button type="button" @onclick="SelectNone">Select none</button>
+        </div>
+    }
+
+    <table>
+        <thead>
+            <tr>
+                @if (Editable)
+                {
+                    <th class="sel"><span class="visually-hidden">Apply</span></th>
+                }
+                <th>Product</th>
+                <th class="num">Current</th>
+                <th class="num">New</th>
+                <th class="num">Change</th>
+                <th class="num">Margin</th>
+                <th>Checks</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in VisibleItems)
+            {
+                var row = item;
+                var price = PriceOf(row);
+                var warnings = WarningsOf(row);
+                var blocked = price <= row.Cost;
+                <tr class="@RowClass(row, warnings)">
+                    @if (Editable)
+                    {
+                        <td class="sel">
+                            <input type="checkbox" id="sel-@row.Sku" aria-label="Apply @row.Name" checked="@_selected.Contains(row.Sku)"
+                                   disabled="@blocked" @onchange="e => Toggle(row, e)" />
+                        </td>
+                    }
+                    <td>
+                        <label for="sel-@row.Sku" class="product">@row.Name</label>
+                        <div class="muted">@row.Sku · @row.MonthlyUnits.ToString("N0", Host.Culture) units/month</div>
+                    </td>
+                    <td class="num">@Money.Format(row.CurrentPrice, Host.Culture, 2)</td>
+                    <td class="num">
+                        @if (Editable)
+                        {
+                            <input class="price" id="price-@row.Sku" type="number" step="0.01" min="0" aria-label="New price for @row.Name"
+                                   value="@price.ToString("0.00", CultureInfo.InvariantCulture)" @onchange="e => SetPrice(row, e)" />
+                        }
+                        else
+                        {
+                            @Money.Format(AppliedPrice(row), Host.Culture, 2)
+                        }
+                    </td>
+                    <td class="num">@Money.Percent(Math.Round((price - row.CurrentPrice) / row.CurrentPrice * 100, 1), Host.Culture)</td>
+                    <td class="num">@(price > 0 ? Money.Percent(Math.Round((price - row.Cost) / price * 100, 1), Host.Culture, signed: false) : "—")</td>
+                    <td>
+                        @if (warnings.Count == 0)
+                        {
+                            <span class="badge ok">✓ OK</span>
+                        }
+                        @foreach (var warning in warnings)
+                        {
+                            <span class="badge @(warning == "Below cost" ? "critical" : "warning")">@(warning == "Below cost" ? "⛔" : "⚠") @warning</span>
+                        }
+                    </td>
+                </tr>
+            }
+            @if (!VisibleItems.Any())
+            {
+                <tr><td colspan="7" class="muted empty">No products match the filter.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (_error is not null)
+    {
+        <p class="error" role="alert">@_error</p>
+    }
+
+    @if (Editable)
+    {
+        <footer class="actions">
+            @if (_confirming)
+            {
+                <p class="confirm-text">Apply <strong>@SelectedCount</strong> new @(SelectedCount == 1 ? "price" : "prices") to live products in @_set.Category? This cannot be undone from here.</p>
+                <button type="button" @onclick="() => _confirming = false">Cancel</button>
+                <button type="button" class="primary" id="confirm" @onclick="Apply">Confirm and apply</button>
+            }
+            else
+            {
+                <button type="button" class="danger" @onclick="Discard">Discard</button>
+                <button type="button" class="primary" id="apply" disabled="@(SelectedCount == 0)" @onclick="() => { _confirming = true; _error = null; }">
+                    Apply @SelectedCount @(SelectedCount == 1 ? "change" : "changes")…
+                </button>
+            }
+        </footer>
+    }
+</div>
+
+<style>
+    .review-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+    .review-head h1 { margin: 0; }
+    .subtitle { margin: 2px 0 0; color: var(--color-text-secondary); font-size: var(--font-text-sm-size); }
+    .reason { margin: 10px 0 12px; padding: 8px 12px; border-left: 3px solid var(--color-border-primary); color: var(--color-text-secondary); background: var(--color-background-secondary); border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0; }
+
+    .status { padding: 3px 10px; border-radius: var(--border-radius-full); font-size: 12px; font-weight: var(--font-weight-medium); white-space: nowrap; }
+    .status-pending { background: var(--color-background-info); color: var(--color-text-info); }
+    .status-applied { background: var(--color-background-success); color: var(--color-text-success); }
+    .status-discarded { background: var(--color-background-tertiary); color: var(--color-text-secondary); }
+
+    .summary { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+    .warn-count { color: var(--color-text-warning); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .toolbar input[type=search] { min-width: 200px; flex: 1 1 200px; max-width: 280px; }
+    .toolbar .spacer { flex: 1; }
+    .check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-text-sm-size); color: var(--color-text-secondary); }
+
+    .review table { font-size: var(--font-text-sm-size); }
+    .review .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .review .sel { width: 28px; }
+    .review .product { font-weight: var(--font-weight-medium); cursor: pointer; }
+    .review .muted { color: var(--color-text-tertiary); font-size: 12px; }
+    .review .empty { text-align: center; padding: 16px; }
+    .review tr.unselected td:not(.sel) { opacity: .55; }
+    .review tr.blocked td:not(.sel) { opacity: .55; }
+    .price { width: 88px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: var(--border-radius-full); font-size: 11.5px; font-weight: var(--font-weight-medium); white-space: nowrap; }
+    .badge.ok { background: var(--color-background-success); color: var(--color-text-success); }
+    .badge.warning { background: var(--color-background-warning); color: var(--color-text-warning); }
+    .badge.critical { background: var(--color-background-danger); color: var(--color-text-danger); }
+
+    .outcome { margin-bottom: 12px; padding: 10px 12px; border-radius: var(--border-radius-md); }
+    .outcome-applied { background: var(--color-background-success); color: var(--color-text-success); }
+    .outcome-discarded { background: var(--color-background-tertiary); color: var(--color-text-secondary); }
+
+    .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+    .confirm-text { flex: 1 1 260px; margin: 0; }
+    .error { color: var(--color-text-danger); margin: 10px 0 0; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+@code {
+    private PriceChangeSet _set = default!;
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, decimal> _prices = new(StringComparer.Ordinal);
+    private string? _filter;
+    private bool _onlyWarnings;
+    private bool _confirming;
+    private string? _error;
+
+    private bool Editable => _set.Status == ChangeSetStatus.Pending;
+    private int SelectedCount => _selected.Count;
+    private int WarningCount => _set.Items.Count(item => WarningsOf(item).Count > 0);
+
+    private decimal Impact => _set.Items
+        .Where(item => _selected.Contains(item.Sku))
+        .Sum(item => (PriceOf(item) - item.CurrentPrice) * item.MonthlyUnits);
+
+    private string StatusLabel => _set.Status switch
+    {
+        ChangeSetStatus.Applied => "Applied",
+        ChangeSetStatus.Discarded => "Discarded",
+        _ => "Waiting for review",
+    };
+
+    private IEnumerable<PriceChangeItem> VisibleItems => _set.Items.Where(item =>
+        (string.IsNullOrWhiteSpace(_filter) ||
+         item.Name.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase) ||
+         item.Sku.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+        (!_onlyWarnings || WarningsOf(item).Count > 0));
+
+    protected override void OnInitialized()
+    {
+        // The server's copy is the truth: the set may have been applied since the tool ran.
+        _set = (Data is null ? null : PriceChanges.Get(Data.Id)) ?? Data!;
+        foreach (var item in _set.Items)
+        {
+            _prices[item.Sku] = item.ProposedPrice;
+        }
+
+        SelectRecommended();
+    }
+
+    private decimal PriceOf(PriceChangeItem item) => _prices.GetValueOrDefault(item.Sku, item.ProposedPrice);
+
+    private IReadOnlyList<string> WarningsOf(PriceChangeItem item) =>
+        PriceChangeService.Warnings(item.CurrentPrice, PriceOf(item), item.Cost);
+
+    private decimal AppliedPrice(PriceChangeItem item) =>
+        _set.Status == ChangeSetStatus.Applied && _applied.TryGetValue(item.Sku, out var price) ? price : item.CurrentPrice;
+
+    private readonly Dictionary<string, decimal> _applied = new(StringComparer.Ordinal);
+
+    private string? RowClass(PriceChangeItem item, IReadOnlyList<string> warnings) =>
+        !Editable ? (_applied.ContainsKey(item.Sku) || _set.Status != ChangeSetStatus.Applied ? null : "unselected")
+        : PriceOf(item) <= item.Cost ? "blocked"
+        : _selected.Contains(item.Sku) ? null : "unselected";
+
+    private void Toggle(PriceChangeItem item, ChangeEventArgs e)
+    {
+        if (e.Value is true && PriceOf(item) > item.Cost)
+        {
+            _selected.Add(item.Sku);
+        }
+        else
+        {
+            _selected.Remove(item.Sku);
+        }
+
+        _confirming = false;
+    }
+
+    private void SetPrice(PriceChangeItem item, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var price) && price > 0)
+        {
+            _prices[item.Sku] = Math.Round(price, 2);
+            if (price <= item.Cost)
+            {
+                _selected.Remove(item.Sku);
+            }
+        }
+
+        _confirming = false;
+    }
+
+    private void SelectRecommended()
+    {
+        _selected.Clear();
+        foreach (var item in _set.Items.Where(item => WarningsOf(item).Count == 0))
+        {
+            _selected.Add(item.Sku);
+        }
+
+        _confirming = false;
+    }
+
+    private void SelectNone()
+    {
+        _selected.Clear();
+        _confirming = false;
+    }
+
+    private void Apply()
+    {
+        var approved = _set.Items.Where(item => _selected.Contains(item.Sku)).ToDictionary(item => item.Sku, PriceOf);
+        try
+        {
+            _set = PriceChanges.Apply(_set.Id, approved);
+            foreach (var (sku, price) in approved)
+            {
+                _applied[sku] = price;
+            }
+
+            _error = null;
+            var applied = string.Join("; ", approved.Select(pair => $"{pair.Key} {Name(pair.Key)} {Current(pair.Key):0.00} -> {pair.Value:0.00} EUR"));
+            var skipped = _set.Items.Where(item => !approved.ContainsKey(item.Sku))
+                .Select(item => $"{item.Sku} {item.Name}" + (WarningsOf(item) is { Count: > 0 } w ? $" ({string.Join(", ", w)})" : " (deselected by the user)"));
+            Host.UpdateModelContext(
+                $"The user applied price change {_set.Id} ({_set.Category}, {_set.Percent:+0.#;-0.#} % proposed). " +
+                $"Applied {approved.Count}: {applied}. Skipped {_set.Result!.Skipped}: {string.Join("; ", skipped)}. " +
+                $"Estimated monthly revenue impact {_set.Result.MonthlyRevenueImpact:+0.00;-0.00} EUR.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+            _set = PriceChanges.Get(_set.Id) ?? _set;
+        }
+
+        _confirming = false;
+    }
+
+    private void Discard()
+    {
+        try
+        {
+            _set = PriceChanges.Discard(_set.Id);
+            Host.UpdateModelContext($"The user discarded price change {_set.Id} ({_set.Category}). No prices changed.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+            _set = PriceChanges.Get(_set.Id) ?? _set;
+        }
+    }
+
+    private string Name(string sku) => _set.Items.First(item => item.Sku == sku).Name;
+
+    private decimal Current(string sku) => _set.Items.First(item => item.Sku == sku).CurrentPrice;
+
+    private string SignedMoney(decimal amount) => (amount > 0 ? "+" : "") + Money.Format(amount, Host.Culture);
+}
