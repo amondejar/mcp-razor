@@ -43,7 +43,9 @@ public sealed class McpServerTests : IAsyncLifetime
     [Fact]
     public void Advertises_mcp_apps_support()
     {
-        Assert.True(_client.ServerCapabilities.Extensions?.ContainsKey(McpApps.ExtensionId));
+        var extensions = _client.ServerCapabilities.Extensions;
+        Assert.NotNull(extensions);
+        Assert.Contains(McpApps.ExtensionId, extensions.Keys);
     }
 
     [Fact]
@@ -55,7 +57,7 @@ public sealed class McpServerTests : IAsyncLifetime
         foreach (var name in new[] { "mcp_razor_render", "mcp_razor_event", "mcp_razor_release" })
         {
             var visibility = tools[name].Meta!["ui"]!["visibility"]!.AsArray().Select(node => node!.GetValue<string>());
-            Assert.Equal(["app"], visibility);
+            Assert.Equal(new[] { "app" }, visibility);
         }
     }
 

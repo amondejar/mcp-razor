@@ -108,14 +108,19 @@ what the app sends to the host: messages to the chat and updates to the model co
 
 ![The customer form with server-side validation](https://raw.githubusercontent.com/amondejar/mcp-razor/main/docs/images/new-customer.png)
 
-To use it from a real host, run the sample over stdio. For example, in Claude Desktop's `claude_desktop_config.json`:
+To use it from a real host, build the sample and run its DLL over stdio. Do not use `dotnet run` here: it writes
+build output to stdout, which breaks the stdio channel. For example, in Claude Desktop's `claude_desktop_config.json`:
+
+```bash
+dotnet build samples/LoanReview
+```
 
 ```json
 {
   "mcpServers": {
     "loan-review": {
       "command": "dotnet",
-      "args": ["run", "--project", "/path/to/mcp-razor/samples/LoanReview", "--", "--stdio"]
+      "args": ["/path/to/mcp-razor/samples/LoanReview/bin/Debug/net10.0/LoanReview.dll", "--stdio"]
     }
   }
 }
