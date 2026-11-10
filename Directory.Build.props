@@ -15,5 +15,9 @@
     <RepositoryUrl>https://github.com/amondejar/mcp-razor</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>mcp;mcp-apps;model-context-protocol;blazor;razor;ai-agents;claude</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
 </Project>
